@@ -29,7 +29,7 @@ Install yt-dlp by yourself. I initially tried to use Python's modules but due to
 * install yt-dlp following [https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#installation](https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#installation)
 * install python if you don't have it already (everyhing 3.x should be working fine, I'm not using any fancy solutions that would require a bleeding edge version)
 * clone this repo
-* install in your browser a plugin called "get cookies.txt LOCALLY" (unless you know how to extract cookies from your browser! yt-dlp's own solution of `yt-dlp --cookies-from-browser chrome --cookies cookies.txt` WORKS, but extracts EVERYTHING, not you YouTube cookies, so be midful of that)
+* install in your browser a plugin called "get cookies.txt LOCALLY" (unless you know how to extract cookies from your browser! yt-dlp's solution of `yt-dlp --cookies-from-browser chrome --cookies cookies.txt https://www.youtube.com/` works SOMETIMES - the plugin solution works every time)
 * open subs-sync.pl in a text editor and just read the in-line documentation. All you need to know is there, but in short:
 * populate the 'archive' and 'casual' dictionaries with your favourite channels and assign them a category.
 * log in to youtube in chrome/brave and extract the cookies and save them to cookies.txt
