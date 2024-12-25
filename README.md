@@ -31,19 +31,19 @@ Install yt-dlp by yourself. I initially tried to use Python's modules but due to
 * clone this repo
 * install in your browser a plugin called "get cookies.txt LOCALLY" (unless you know how to extract cookies from your browser! yt-dlp's solution of `yt-dlp --cookies-from-browser chrome --cookies cookies.txt https://www.youtube.com/` works SOMETIMES - the plugin solution works every time).
 
-```
-OK, FULL STOP.
+
+**OK, FULL STOP.**
 That part is probably the most difficult and frustrating part of this whole project and took me longer to figure out than writing the actual code (not even joking!).
 You have to understand that YouTube will do ANYTHING to make sure you only consume their content the way THEY want you to and they will go above and beyond to make your life miserable if you don't.
 The solution thar works for me (for now):
-    * Set up your browser extension to allow it to work in incognito mode (in my cased it was my password manager and `get cookies.txt LOCALLY`)
+    * Set up your browser extension to allow it to work in incognito mode (in my case it was my password manager and `get cookies.txt LOCALLY`)
     * open an incognito session
     * log in to youtube
     * open a video and let it play 
-    * using the `get cookies.txt LOCALLY` extension, download the cookies and put them in `cookies.txt`
+    * using the `get cookies.txt LOCALLY` extension, download the cookies and put them in `cookies.txt` file
     * close the incognito window. 
 That process ensures that those cookies will not be imediately invalidated by Youtube - content comes from a unique login session that is never overwritten by your activity because... you will never log in to that unique incognito session ever again (if you download the cookies from the normal session, cookies might be useless in a couple of MINUTES!)
-```
+
 
 * populate the 'archive.txt' and 'casual.txt' files with your favourite channels and assign them a category. The format is URL:category. For example:
 
