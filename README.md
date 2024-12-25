@@ -45,11 +45,11 @@ The solution that works for me (for now):
 
 That process ensures that those cookies will not be imediately invalidated by Youtube - content comes from a unique login session that is never overwritten by your activity because... you will never log in to that unique incognito session ever again (if you download the cookies from the normal session, cookies might be useless in a couple of MINUTES!)
 
-* populate the 'archive.txt' and 'casual.txt' files with your favourite channels and assign them a category. The format is URL:category. For example:
+* populate the 'archive.txt' and 'casual.txt' files with your favourite channels and assign them a category. The format is `URL`|`category`. For example:
 
 ```
-https://www.youtube.com/@AllThingsSecured:knowledge
-https://www.youtube.com/@BaumgartnerRestoration:art
+https://www.youtube.com/@AllThingsSecured|knowledge
+https://www.youtube.com/@BaumgartnerRestoration|art
 ```
 * open config.json in a text editor and adjust the variables:
     * `"initial_seeding": false` - this variable should be set to `true` before you run the app for the first time - it ensures that the app will download ALL videos from `archive` category and the last 30 days from `causal` category. Once it's done, switch  it back to `false` so when it's triggered, only downloads videos from the last 24h
