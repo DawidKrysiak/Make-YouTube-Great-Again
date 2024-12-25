@@ -10,6 +10,7 @@ with open('config.json', 'r') as config_file:
 initial_seeding = config['initial_seeding']
 retention_period = config['retention_period']
 cookies_file = config['cookies_file']
+base_path = config['base_path']
 
 def load_urls(file_path):
     urls = {}
@@ -48,9 +49,6 @@ def create_directories(base_path, data):
         
         print(f"Created directory: {sub_dir}")
 
-# Specify the base path where directories will be created. Dot means 'wherever the script is'
-
-base_path = "."
 
 # Create directories for 'archive' and 'casual'
 create_directories(base_path, archive)
