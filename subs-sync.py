@@ -1,54 +1,26 @@
 import os
 import subprocess
+import json
 from datetime import datetime, timedelta
 
-# This variable can be True or False.
-# If True, the script will download all the videos from the channels specified in the 'archive' and 'casual' dictionaries.
-# If False, the script will download only the latest videos from the channels specified in the 'archive' and 'casual' dictionaries.
+# Load configuration from config.json
+with open('config.json', 'r') as config_file:
+    config = json.load(config_file)
 
-initial_seeding = False
+initial_seeding = config['initial_seeding']
+retention_period = config['retention_period']
+cookies_file = config['cookies_file']
 
-# The 'archive' and 'casual' dictionaries contain the URLs of the YouTube channels that you want to sync.
-# Archive contains channels that you want to archive in their entirety and retain forever.
-# Casual contains channels that you want to sync only the latest videos and delete them after a period of time.
+def load_urls(file_path):
+    urls = {}
+    with open(file_path, 'r') as file:
+        for line in file:
+            url, category = line.strip().split(':')
+            urls[url] = category
+    return urls
 
-retention_period = 30
-
-# The 'cookies_file' variable contains the path to the cookies file that you have saved from your browser.
-cookies_file = 'cookies.txt'
-
-"""
-Below are the URLs of the YouTube channels that you want to sync.
-The URLs are mapped to the categories that you want to sync them to.
-The categories are the names of the directories where the videos will be saved.
-The reason for two dictionaires is that you may want to sync some channels in a different way.
-For me, archive contains channels that I want to archive in their entirety.
-Caual contains channels that I want to sync only the latest videos and probably delete them after a few months.
-"""
-
-
-archive = {
-        "https://www.youtube.com/@TheFatFiles" : "history",
-        "https://www.youtube.com/@the_fat_electrician" : "history",
-        "https://www.youtube.com/@amazingpolishhistory" : "history",
-        "https://www.youtube.com/@WorldHistoryVideos" : "history"
-    }
-
-casual = {
-        "https://www.youtube.com/@AllThingsSecured" : "knowledge",
-        "https://www.youtube.com/@BaumgartnerRestoration" : "art",
-        "https://www.youtube.com/@CGPGrey" : "knowledge",
-        "https://www.youtube.com/@CinemaStix" : "entertainment",
-        "https://www.youtube.com/@CinemaWins" : "entertainment",
-        "https://www.youtube.com/@CinemaSins" : "entertainment",
-        "https://www.youtube.com/@HistoryMatters" : "history",
-        "https://www.youtube.com/@historyofeverythingpodcast" : "history",
-        "https://www.youtube.com/@HistoryoftheEarth" : "history",
-        "https://www.youtube.com/@historypop" : "history",
-        "https://www.youtube.com/@HistoryScope" : "history",
-        "https://www.youtube.com/@HistoryTime" : "history",
-        "https://www.youtube.com/@HooverInstitution" : "journalism",    
-    }
+archive = load_urls('archive.txt')
+casual = load_urls('casual.txt')
 
 # Function to delete files older than a month
 def delete_old_files(directory):
@@ -89,7 +61,6 @@ def download_videos(url, category, dateafter=None):
         'yt-dlp',
         '--output', f"{base_path}/{category}/%(uploader)s/%(title)s.%(ext)s",
         '--cookies', cookies_file,
-        '--verbose',
         url
     ]
     if dateafter:

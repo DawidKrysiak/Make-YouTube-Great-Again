@@ -1,0 +1,5 @@
+{
+    "initial_seeding": false,
+    "retention_period": 30,
+    "cookies_file": "cookies.txt"
+}

@@ -29,12 +29,35 @@ Install yt-dlp by yourself. I initially tried to use Python's modules but due to
 * install yt-dlp following [https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#installation](https://github.com/yt-dlp/yt-dlp?tab=readme-ov-file#installation)
 * install python if you don't have it already (everyhing 3.x should be working fine, I'm not using any fancy solutions that would require a bleeding edge version)
 * clone this repo
-* install in your browser a plugin called "get cookies.txt LOCALLY" (unless you know how to extract cookies from your browser! yt-dlp's solution of `yt-dlp --cookies-from-browser chrome --cookies cookies.txt https://www.youtube.com/` works SOMETIMES - the plugin solution works every time)
-* open subs-sync.pl in a text editor and just read the in-line documentation. All you need to know is there, but in short:
-* populate the 'archive' and 'casual' dictionaries with your favourite channels and assign them a category.
-* log in to youtube in chrome/brave and extract the cookies and save them to cookies.txt
-* adjust `base_path = "."` line and put the absolute path to a location where you want the videos to be saved (by default it will be the same directory where subs-sync.py resides - that's what the dot means)
+* install in your browser a plugin called "get cookies.txt LOCALLY" (unless you know how to extract cookies from your browser! yt-dlp's solution of `yt-dlp --cookies-from-browser chrome --cookies cookies.txt https://www.youtube.com/` works SOMETIMES - the plugin solution works every time).
+
+```
+OK, FULL STOP.
+That part is probably the most difficult and frustrating part of this whole project and took me longer to figure out than writing the actual code (not even joking!).
+You have to understand that YouTube will do ANYTHING to make sure you only consume their content the way THEY want you to and they will go above and beyond to make your life miserable if you don't.
+The solution thar works for me (for now):
+    * Set up your browser extension to allow it to work in incognito mode (in my cased it was my password manager and `get cookies.txt LOCALLY`)
+    * open an incognito session
+    * log in to youtube
+    * open a video and let it play 
+    * using the `get cookies.txt LOCALLY` extension, download the cookies and put them in `cookies.txt`
+    * close the incognito window. 
+That process ensures that those cookies will not be imediately invalidated by Youtube - content comes from a unique login session that is never overwritten by your activity because... you will never log in to that unique incognito session ever again (if you download the cookies from the normal session, cookies might be useless in a couple of MINUTES!)
+```
+
+* populate the 'archive.txt' and 'casual.txt' files with your favourite channels and assign them a category. The format is URL:category. For example:
+
+```
+https://www.youtube.com/@AllThingsSecured:knowledge
+https://www.youtube.com/@BaumgartnerRestoration:art
+```
+* open config.json in a text editor and adjust the variables:
+    * `"initial_seeding": false` - this variable should be set to `true` before you run the app for the first time - it ensures that the app will download ALL videos from `archive` category and the last 30 days from `causal` category. Once it's done, switch  it back to `false` so when it's triggered, only downloads videos from the last 24h
+    * `"retention_period": 30` - this variable defines the retetion period of the `casual` videos after which those will be deleted. This variable does not apply to `archive` category which by definition - retains EVERYTHING FOREVER. If you don't want to retain a certain channel any longer, just move the URL from  `archive.txt` to `casual.txt` and the next time you run the script, it will take care of the files for you.
+    * adjust `base_path = "."` line and put the absolute path to a location where you want the videos to be saved (by default it will be the same directory where subs-sync.py resides - that's what the dot means), but realistically it should be a path to a drive/location with plenty of storage
 * execute `python3 subs-sync.py` and check the output
 * script will create a directory for each category you assigned to any of the videos (in my example it would be: knowledge, politics, history, Computer Science and so on)
 * script will create a sub-directory with the name of the channel and will put all the videos it manages to download into that sub-directory
-* for the `casual` category, videos will be retained for only 30 days, but you can adjust that by changing the value of `retention_period = 30`
+* once the initial seeding is complete, turn the `initial_seeding` to `false` and set up a cron job (or scheduled task on Windows) to run the script daily
+* enjoy content with no ads and comments
+
