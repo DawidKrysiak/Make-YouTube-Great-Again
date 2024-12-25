@@ -16,8 +16,10 @@ def load_urls(file_path):
     urls = {}
     with open(file_path, 'r') as file:
         for line in file:
-            url, category = line.strip().split(':')
-            urls[url] = category
+            line = line.strip()
+            if line:  # Check if the line is not empty
+                url, category = line.split('|')
+                urls[url] = category
     return urls
 
 archive = load_urls('archive.txt')
