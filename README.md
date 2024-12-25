@@ -61,3 +61,6 @@ https://www.youtube.com/@BaumgartnerRestoration|art
 * once the initial seeding is complete, turn the `initial_seeding` to `false` and set up a cron job (or scheduled task on Windows) to run the script daily
 * enjoy content with no ads and comments
 
+# Known Issues
+* 404 Errors - check your cookies.txt file. This needs to be Netscape format with newline characters applicable to your system. For me (MacOS, Linux) it's LF, but in Windows it's CRLF - you can change the characters if needed in text editors like Notepad++ or VSCode/Codium
+* 'This content isn't available' - if this happens occasionally, it's just a deleted/set to non-public after it was published -yt-dl uses the YT's playlists which might have references to dead content. If this happens to every single attempt, it means YT got wise and shadow ban you :) (did I mentioned they will go above and beyond to make your life miserable?
