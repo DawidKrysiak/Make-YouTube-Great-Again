@@ -2,6 +2,9 @@ import os
 import subprocess
 import json
 from datetime import datetime, timedelta
+from time import sleep
+import random
+
 
 # Load configuration from config.json
 with open('config.json', 'r') as config_file:
@@ -24,6 +27,9 @@ def load_urls(file_path):
 
 archive = load_urls('archive.txt')
 casual = load_urls('casual.txt')
+
+def randomised_delay():
+    return round(random.uniform(3, 30), 2)
 
 # Function to delete files older than a month
 def delete_old_files(directory):
@@ -57,6 +63,9 @@ create_directories(base_path, archive)
 create_directories(base_path, casual)
 
 def download_videos(url, category, dateafter=None):
+    
+    sleep(randomised_delay()) #because YouTube doesn't like it when you download too fast
+    
     command = [
         'yt-dlp',
         '--output', f"{base_path}/{category}/%(uploader)s/%(title)s.%(ext)s",
