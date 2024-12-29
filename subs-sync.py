@@ -70,6 +70,9 @@ def download_videos(url, category, dateafter=None):
         'yt-dlp',
         '--output', f"{base_path}/{category}/%(uploader)s/%(title)s.%(ext)s",
         '--cookies', cookies_file,
+        '--sleep-interval', '3',
+        '--max-sleep-interval', '30',
+        '--sleep-subtitles', '1',
         url
     ]
     if dateafter:
