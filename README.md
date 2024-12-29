@@ -63,4 +63,8 @@ https://www.youtube.com/@BaumgartnerRestoration|art
 
 # Known Issues
 * 404 Errors - check your cookies.txt file. This needs to be Netscape format with newline characters applicable to your system. For me (MacOS, Linux) it's LF, but in Windows it's CRLF - you can change the characters if needed in text editors like Notepad++ or VSCode/Codium
+<<<<<<< HEAD
 * 'This content isn't available' - if this happens occasionally, it's just a deleted/set to non-public after it was published -yt-dl uses the YT's playlists which might have references to dead content. If this happens to every single attempt, it means YT got wise and shadow ban you :) (did I mentioned they will go above and beyond to make your life miserable? I added a randomised delay between requests to see if that improves the situation a bit
+=======
+* 'This content isn't available' - if this happens occasionally, it's just a deleted/set to non-public after it was published -yt-dl uses the YT's playlists which might have references to dead content. If this happens to every single attempt, it means YT got wise and shadow ban you :) (did I mentioned they will go above and beyond to make your life miserable?). I am trying to avoid that by introducing random length pauses between channels, videos and subtitle downloads. We shall see how effective it is.
+>>>>>>> 2f4d643 (pauses + documetation)
