@@ -71,7 +71,7 @@ def download_videos(url, category, dateafter=None):
         '--output', f"{base_path}/{category}/%(uploader)s/%(title)s.%(ext)s",
         '--cookies', cookies_file,
         '--sleep-interval', '3',
-        '--max-sleep-interval', '12',
+        '--max-sleep-interval', '69',
         '--sleep-subtitles', '1',
         url
     ]
