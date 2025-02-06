@@ -62,7 +62,6 @@ create_directories(base_path, archive)
 create_directories(base_path, casual)
 
 def download_videos(url, category, dateafter=None):
-<<<<<<< HEAD
     error_count = 0
     while error_count < 3:
         sleep(randomised_delay())  # because YouTube doesn't like it when you download too fast
@@ -101,23 +100,6 @@ def initial_seeding_download(url, category):
         if "No videos to download" in result.stdout:
             print(f"No more videos to download for {url}")
             break
-=======
-    
-    sleep(randomised_delay()) #because YouTube doesn't like it when you download too fast
-    
-    command = [
-        'yt-dlp',
-        '--output', f"{base_path}/{category}/%(uploader)s/%(title)s.%(ext)s",
-        '--cookies', cookies_file,
-        '--sleep-interval', '3',
-        '--max-sleep-interval', '69',
-        '--sleep-subtitles', '1',
-        url
-    ]
-    if dateafter:
-        command.extend(['--dateafter', dateafter])
-    subprocess.run(command)
->>>>>>> 93cfa99d5a72d2289f856248c45f8e8da8b18618
 
 for url, category in archive.items():
     if initial_seeding:
