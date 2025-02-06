@@ -51,9 +51,15 @@ That process ensures that those cookies will not be imediately invalidated by Yo
 https://www.youtube.com/@AllThingsSecured|knowledge
 https://www.youtube.com/@BaumgartnerRestoration|art
 ```
+<<<<<<< HEAD
 * open `./config/config.json` in a text editor and adjust the variables:
     * `"initial_seeding": false` - this variable should be set to `true` before you run the app for the first time - it ensures that the app will download ALL videos from `archive` category and the last 30 days from `causal` category. Once it's done, switch  it back to `false` so when it's triggered, only downloads videos from the last 24h
     * `"retention_period": 30` - this variable defines the retetion period of the `casual` videos after which those will be deleted. This variable does not apply to `archive` category which by definition - retains EVERYTHING FOREVER. If you don't want to retain a certain channel any longer, just move the URL from  `archive.txt` to `casual.txt` and the next time you run the script, it will take care of the files for you.
+=======
+* open config.json in a text editor and adjust the variables:
+    * `"initial_seeding": false` - this variable should be set to `true` before you run the app for the first time - it ensures that the app will download ALL videos from `archive` category and the last 30 days from the `casual` category. Once it's done, switch  it back to `false` so when it's triggered, it only downloads videos from the last 24h
+    * `"retention_period": 30` - this variable defines the retention period of the `casual` videos after which those will be deleted. This variable does not apply to `archive` category which by definition - retains EVERYTHING FOREVER. If you don't want to retain a certain channel any longer, just move the URL from  `archive.txt` to `casual.txt` and the next time you run the script, it will take care of the files for you.
+>>>>>>> 93cfa99d5a72d2289f856248c45f8e8da8b18618
     * adjust `"base_path" : "."` line and put the absolute path to a location where you want the videos to be saved (by default it will be the same directory where subs-sync.py resides - that's what the dot means), but realistically it should be a path to a drive/location with plenty of storage
 * execute `python3 subs-sync.py` and check the output
 * the script will create a directory for each category you assigned to any of the videos (in my example it would be: knowledge, politics, history, Computer Science and so on)
@@ -63,4 +69,4 @@ https://www.youtube.com/@BaumgartnerRestoration|art
 
 # Known Issues
 * 404 Errors - check your cookies.txt file. This needs to be Netscape format with newline characters applicable to your system. For me (MacOS, Linux) it's LF, but in Windows it's CRLF - you can change the characters if needed in text editors like Notepad++ or VSCode/Codium
-* 'This content isn't available' - if this happens occasionally, it's just a deleted/set to non-public after it was published -yt-dl uses the YT's playlists which might have references to dead content. If this happens to every single attempt, it means YT got wise and shadow ban you :) (did I mentioned they will go above and beyond to make your life miserable?) I added a randomised delay between channels and videos (as well as a delay for subtitles).
+* 'This content isn't available' - if this happens occasionally, it's just a deleted/set to non-public after it was published -yt-dl uses the YT's playlists which might have references to dead content. If this happens to every single attempt, it means YT got wise and shadowban you :) (did I mention they will go above and beyond to make your life miserable?) I added a randomised delay between channels and videos (as well as a delay for subtitles).
