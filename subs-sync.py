@@ -7,7 +7,7 @@ import random
 
 
 # Load configuration from config.json
-with open('config.json', 'r') as config_file:
+with open('./config/config.json', 'r') as config_file:
     config = json.load(config_file)
 
 initial_seeding = config['initial_seeding']
@@ -25,13 +25,12 @@ def load_urls(file_path):
                 urls[url] = category
     return urls
 
-archive = load_urls('archive.txt')
-casual = load_urls('casual.txt')
+archive = load_urls('./config/archive.txt')
+casual = load_urls('./config/casual.txt')
 
 def randomised_delay():
     return round(random.uniform(3, 30), 2)
 
-# Function to delete files older than a month
 def delete_old_files(directory):
     now = datetime.now()
     cutoff = now - timedelta(days=retention_period)
@@ -63,27 +62,51 @@ create_directories(base_path, archive)
 create_directories(base_path, casual)
 
 def download_videos(url, category, dateafter=None):
-    
-    sleep(randomised_delay()) #because YouTube doesn't like it when you download too fast
-    
-    command = [
-        'yt-dlp',
-        '--output', f"{base_path}/{category}/%(uploader)s/%(title)s.%(ext)s",
-        '--cookies', cookies_file,
-        '--sleep-interval', '3',
-        '--max-sleep-interval', '12',
-        '--sleep-subtitles', '1',
-        url
-    ]
-    if dateafter:
-        command.extend(['--dateafter', dateafter])
-    subprocess.run(command)
+    error_count = 0
+    while error_count < 3:
+        sleep(randomised_delay())  # because YouTube doesn't like it when you download too fast
+        
+        command = [
+            'yt-dlp',
+            '--output', f"{base_path}/{category}/%(uploader)s/%(title)s.%(ext)s",
+            '--cookies', cookies_file,
+            '--sleep-interval', '3',
+            '--max-sleep-interval', '501',
+            '--sleep-subtitles', '2',
+            url
+        ]
+        if dateafter:
+            command.extend(['--dateafter', dateafter])
+        
+        result = subprocess.run(command, capture_output=True, text=True)
+        
+        if "Video unavailable. This content isn’t available." in result.stdout:
+            error_count += 1
+            print(f"Error: Video unavailable. Attempt {error_count}/3")
+            if error_count == 3:
+                print("Stopping process for 24 hours due to repeated 'Video unavailable' errors.")
+                sleep(24 * 60 * 60)  # Sleep for 24 hours
+        else:
+            break
+
+def initial_seeding_download(url, category):
+    current_date = datetime.now()
+    while True:
+        dateafter = (current_date - timedelta(days=30)).strftime('%Y%m%d')
+        download_videos(url, category, dateafter)
+        current_date -= timedelta(days=30)
+        # Check if there are no more videos to download
+        result = subprocess.run(['yt-dlp', '--simulate', '--dateafter', dateafter, url], capture_output=True, text=True)
+        if "No videos to download" in result.stdout:
+            print(f"No more videos to download for {url}")
+            break
 
 for url, category in archive.items():
-    dateafter = None
-    if not initial_seeding:
+    if initial_seeding:
+        initial_seeding_download(url, category)
+    else:
         dateafter = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
-    download_videos(url, category, dateafter)
+        download_videos(url, category, dateafter)
 
 for url, category in casual.items():
     dateafter = None
