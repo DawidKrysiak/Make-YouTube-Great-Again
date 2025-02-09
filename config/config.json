@@ -1,6 +1,6 @@
 {
     "initial_seeding": false,
-    "retention_period": 30,
+    "retention_period": 90,
     "cookies_file": "./config/cookies.txt",
     "base_path" : "."
 }
