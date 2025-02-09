@@ -49,13 +49,14 @@ def create_directories(base_path, data):
         main_dir = os.path.join(base_path, category)
         os.makedirs(main_dir, exist_ok=True)
         
-        # Extract the sub-directory name from the URL
-        sub_dir_name = url.split('@')[1]
-        sub_dir = os.path.join(main_dir, sub_dir_name)
-        os.makedirs(sub_dir, exist_ok=True)
-        
-        print(f"Created directory: {sub_dir}")
-
+        # Check if the URL contains '@' before splitting
+        if '@' in url:
+            sub_dir_name = url.split('@')[1]
+            sub_dir = os.path.join(main_dir, sub_dir_name)
+            os.makedirs(sub_dir, exist_ok=True)
+            print(f"Created directory: {sub_dir}")
+        else:
+            print(f"Invalid URL format (missing '@'): {url}")
 
 # Create directories for 'archive' and 'casual'
 create_directories(base_path, archive)
