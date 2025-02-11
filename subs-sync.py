@@ -81,27 +81,29 @@ def download_videos(url, category, dateafter=None):
             command.extend(['--dateafter', dateafter])
         
         print(f"Running command: {' '.join(command)}")
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        
-        while True:
-            output = process.stdout.readline()
-            if output == '' and process.poll() is not None:
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=600)  # Timeout after 10 minutes
+      
+            print(f"Command output:\n{result.stdout}")
+            print(f"Command error (if any):\n{result.stderr}")
+            
+            if "Video unavailable. This content isn’t available." in result.stderr:
+                error_count += 1
+                print(f"Error: Video unavailable. Attempt {error_count}/3")
+                if error_count == 3:
+                    print("Stopping process for 24 hours due to repeated 'Video unavailable' errors.")
+                    sleep(24 * 60 * 60)  # Sleep for 24 hours
+            elif "Sign in to confirm you’re not a bot" in result.stderr:
+                print("Error: Sign in required. Please check your cookies.")
                 break
-            if output:
-                print(output.strip())
-        
-        stderr = process.stderr.read()
-        if stderr:
-            print(f"Command error (if any):\n{stderr}")
-        
-        if "Video unavailable. This content isn’t available." in stderr:
+            else:
+                break
+        except subprocess.TimeoutExpired:
+            print(f"Command timed out. Retrying...")
             error_count += 1
-            print(f"Error: Video unavailable. Attempt {error_count}/3")
             if error_count == 3:
-                print("Stopping process for 24 hours due to repeated 'Video unavailable' errors.")
+                print("Stopping process for 24 hours due to repeated timeouts.")
                 sleep(24 * 60 * 60)  # Sleep for 24 hours
-        else:
-            break
 
 def initial_seeding_download(url, category, is_archive=False):
     current_date = datetime.now()
