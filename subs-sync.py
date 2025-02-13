@@ -69,39 +69,37 @@ def download_videos(url, category, dateafter=None):
         
         command = [
             'yt-dlp',
-            '--output', f"{base_path}/{category}/%(title)s.%(ext)s",  # Simplified output template
+            '--output', f"{base_path}/{category}/%(uploader)s/%(title)s.%(ext)s",
             '--cookies', cookies_file,
             '--verbose',
-            '--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+            '--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',  # Prioritize MP4 format
             url
         ]
         if dateafter:
             command.extend(['--dateafter', dateafter])
         
         print(f"Running command: {' '.join(command)}")
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=600)  # Timeout after 10 minutes
-            
-            print(f"Command output:\n{result.stdout}")
-            print(f"Command error (if any):\n{result.stderr}")
-            
-            if "Video unavailable. This content isn’t available." in result.stderr:
-                error_count += 1
-                print(f"Error: Video unavailable. Attempt {error_count}/3")
-                if error_count == 3:
-                    print("Stopping process for 24 hours due to repeated 'Video unavailable' errors.")
-                    sleep(24 * 60 * 60)  # Sleep for 24 hours
-            elif "Sign in to confirm you’re not a bot" in result.stderr:
-                print("Error: Sign in required. Please check your cookies.")
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        
+        while True:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
                 break
-            else:
-                break
-        except subprocess.TimeoutExpired:
-            print(f"Command timed out. Retrying...")
+            if output:
+                print(output.strip())
+        
+        stderr = process.stderr.read()
+        if stderr:
+            print(f"Command error (if any):\n{stderr}")
+        
+        if "Video unavailable. This content isn’t available." in stderr:
             error_count += 1
+            print(f"Error: Video unavailable. Attempt {error_count}/3")
             if error_count == 3:
-                print("Stopping process for 24 hours due to repeated timeouts.")
+                print("Stopping process for 24 hours due to repeated 'Video unavailable' errors.")
                 sleep(24 * 60 * 60)  # Sleep for 24 hours
+        else:
+            break
 
 def initial_seeding_download(url, category, is_archive=False):
     current_date = datetime.now()
