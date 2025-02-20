@@ -13,6 +13,7 @@ initial_seeding = config['initial_seeding']
 retention_period = config['retention_period']
 cookies_file = config['cookies_file']
 base_path = config['base_path']
+ARCHIVE_FILE = "./config/download_archive.txt"
 
 def load_urls(file_path):
     urls = {}
@@ -28,8 +29,9 @@ archive = load_urls('./config/archive.txt')
 casual = load_urls('./config/casual.txt')
 
 def randomised_delay():
-    return round(random.uniform(3, 10), 2)  # Shortened delay for testing
+    return round(random.uniform(3, 30), 2)
 
+# Function to delete files older than a month
 def delete_old_files(directory):
     now = datetime.now()
     cutoff = now - timedelta(days=retention_period)
@@ -41,103 +43,74 @@ def delete_old_files(directory):
                 os.remove(file_path)
                 print(f"Deleted old file: {file_path}")
 
+# Create directories for the categories
 def create_directories(base_path, data):
     for url, category in data.items():
         # Create the main directory
         main_dir = os.path.join(base_path, category)
         os.makedirs(main_dir, exist_ok=True)
-        
-        # Check if the URL contains '@' before splitting
-        if '@' in url:
-            sub_dir_name = url.split('@')[1]
-            sub_dir = os.path.join(main_dir, sub_dir_name)
-            os.makedirs(sub_dir, exist_ok=True)
-            print(f"Created directory: {sub_dir}")
-        else:
-            print(f"Invalid URL format (missing '@'): {url}")
+
+        # Extract the sub-directory name from the URL
+        sub_dir_name = url.split('@')[1]
+        sub_dir = os.path.join(main_dir, sub_dir_name)
+        os.makedirs(sub_dir, exist_ok=True)
+
+        print(f"Created directory: {sub_dir}")
 
 # Create directories for 'archive' and 'casual'
 create_directories(base_path, archive)
 create_directories(base_path, casual)
 
 def download_videos(url, category, dateafter=None):
-    error_count = 0
-    while error_count < 3:
-        delay = randomised_delay()
-        print(f"Sleeping for {delay} seconds before downloading {url}")
-        sleep(delay)  # because YouTube doesn't like it when you download too fast
-        
-        command = [
-            'yt-dlp',
-            '--output', f"{base_path}/{category}/%(uploader)s/%(title)s.%(ext)s",
-            '--cookies', cookies_file,
-            '--verbose',
-            '--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',  # Prioritize MP4 format
-            url
-        ]
-        if dateafter:
-            command.extend(['--dateafter', dateafter])
-        
-        print(f"Running command: {' '.join(command)}")
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        
-        while True:
-            output = process.stdout.readline()
-            if output == '' and process.poll() is not None:
-                break
-            if output:
-                print(output.strip())
-        
-        stderr = process.stderr.read()
-        if stderr:
-            print(f"Command error (if any):\n{stderr}")
-        
-        if "Video unavailable. This content isn’t available." in stderr:
-            error_count += 1
-            print(f"Error: Video unavailable. Attempt {error_count}/3")
-            if error_count == 3:
-                print("Stopping process for 24 hours due to repeated 'Video unavailable' errors.")
-                sleep(24 * 60 * 60)  # Sleep for 24 hours
-        else:
-            break
+    delay = randomised_delay()
+    print(f"Sleeping for {delay} seconds")
+    sleep(delay)  # because YouTube doesn't like it when you download too fast
+    print("wake up")
+    command = [
+        'yt-dlp',
+        '--output', f"{base_path}/{category}/%(uploader)s/%(title)s.%(ext)s",
+        '--cookies', cookies_file,
+        '--sleep-interval', '3',
+        '--max-sleep-interval', '69',
+        '--sleep-subtitles', '1',
+        '--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+        '--no-playlist',
+        '--download-archive', ARCHIVE_FILE,
+        url
+    ]
+    if dateafter:
+        command.extend(['--dateafter', dateafter])
 
-def initial_seeding_download(url, category, is_archive=False):
-    current_date = datetime.now()
-    while True:
-        if not is_archive:
-            dateafter = (current_date - timedelta(days=30)).strftime('%Y%m%d')
-            download_videos(url, category, dateafter)
-            # Check if there are no more videos to download
-            result = subprocess.run(['yt-dlp', '--dateafter', dateafter, url], capture_output=True, text=True)
-            if "No more videos to download" in result.stdout:
-                print(f"No more videos to download for {url}")
-                break
-        else:
-            download_videos(url, category)
-            # Check if there are no more videos to download
-            result = subprocess.run(['yt-dlp', url], capture_output=True, text=True)
-            if "No more videos to download" in result.stdout:
-                print(f"No more videos to download for {url}")
-                break
-        current_date -= timedelta(days=30)
+    print(f"Running command: {' '.join(command)}")
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    stdout, stderr = process.communicate()
+
+    print(stdout)
+    print(stderr)
+
+    if "no more videos to download" in stdout.lower() or "no more videos to download" in stderr.lower():
+        print("No more videos to download for this URL.")
+        return True
+
+    return process.returncode == 0
 
 for url, category in archive.items():
-    if initial_seeding:
-        initial_seeding_download(url, category, is_archive=True)
-    else:
+    dateafter = None
+    if not initial_seeding:
         dateafter = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
-        download_videos(url, category, dateafter)
+    if download_videos(url, category, dateafter):
+        break
 
 for url, category in casual.items():
+    dateafter = None
     if initial_seeding:
         dateafter = (datetime.now() - timedelta(days=30)).strftime('%Y%m%d')
-        download_videos(url, category, dateafter)
     else:
         dateafter = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
-        download_videos(url, category, dateafter)
-    
-    # Delete old files in casual directories if not initial seeding
-    if not initial_seeding:
-        sub_dir_name = url.split('@')[1]
-        sub_dir = os.path.join(base_path, category, sub_dir_name)
-        delete_old_files(sub_dir)
+    if download_videos(url, category, dateafter):
+        break
+
+    # Delete old files in casual directories
+    sub_dir_name = url.split('@')[1]
+    sub_dir = os.path.join(base_path, category, sub_dir_name)
+    delete_old_files(sub_dir)
