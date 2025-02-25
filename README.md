@@ -61,6 +61,14 @@ https://www.youtube.com/@BaumgartnerRestoration|art
 * once the initial seeding is complete, turn the `initial_seeding` to `false` and set up a cron job (or scheduled task on Windows) to run the script daily
 * enjoy content with no ads and comments
 
+# New stuff and "gotcha's'"
+This code was designed to help **ME** with this task, so I do not assume it wil fit everyone's needs.
+* MP4 conversion: I am converting, for consistency, all videos to MP4 using ffmpeg. If you wish for it to work, install ffmpeg aplicable to your OS. Otherwise, remove the line `        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',` from the code and yt-dlp will save the file in whatver is the original format.
+* Bash alternative. Originally served as a debugging tool for the Python script but then I realised it might be useful to someone.
+What I see is possible applications:
+    * Bash script used if you have a dedicated Linux/MacOS/WSL system you can simply trigger via crontab
+    * Python script is more universal, can be deployed in a Docker container, on Windows natively etc.
+
 # Known Issues
 * 404 Errors - check your cookies.txt file. This needs to be Netscape format with newline characters applicable to your system. For me (MacOS, Linux) it's LF, but in Windows it's CRLF - you can change the characters if needed in text editors like Notepad++ or VSCode/Codium
 * 'This content isn't available' - if this happens occasionally, it's just a deleted/set to non-public after it was published -yt-dl uses the YT's playlists which might have references to dead content. If this happens to every single attempt, it means YT got wise and shadow ban you :) (did I mentioned they will go above and beyond to make your life miserable?) I added a randomised delay between channels and videos (as well as a delay for subtitles).
