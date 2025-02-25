@@ -72,7 +72,7 @@ create_directories "$BASE_PATH" CASUAL_URLS CASUAL_CATEGORIES
 
 # Randomized delay
 randomized_delay() {
-    echo $(awk -v min=3 -v max=10 'BEGIN{srand(); print int(min+rand()*(max-min+1))}')
+    echo $(awk -v min=3 -v max=30 'BEGIN{srand(); print int(min+rand()*(max-min+1))}')
 }
 
 # Delete old files
@@ -96,8 +96,10 @@ download_videos() {
     local url=$1
     local category=$2
     local dateafter=$3
-    local error_count=0
-    while [[ $error_count -lt 3 ]]; do
+    local retries=3
+    local attempt=0
+
+    while [[ $attempt -lt $retries ]]; do
         local delay=$(randomized_delay)
         echo "Sleeping for $delay seconds before downloading $url"
         sleep $delay
@@ -122,10 +124,25 @@ download_videos() {
         local result=$?
         if [[ $result -ne 0 ]]; then
             echo "Command failed with exit code $result"
-            error_count=$((error_count + 1))
-            if [[ $error_count -eq 3 ]]; then
-                echo "Stopping process for 24 hours due to repeated errors."
-                sleep 86400  # Sleep for 24 hours
+            if grep -q "Premieres" <<< "$result"; then
+                echo "Skipping premiere video: $url"
+                return
+            elif grep -q "VPN/Proxy Detected" <<< "$result"; then
+                echo "Skipping video due to VPN/Proxy detection: $url"
+                return
+            elif grep -q "This channel does not have a streams tab" <<< "$result"; then
+                echo "Skipping video due to missing streams tab: $url"
+                return
+            elif grep -q "Network is unreachable" <<< "$result"; then
+                echo "Network error: $result. Retrying in 1 minute..."
+                sleep 60
+                attempt=$((attempt + 1))
+            else
+                attempt=$((attempt + 1))
+                if [[ $attempt -eq $retries ]]; then
+                    echo "Stopping process for 24 hours due to repeated errors."
+                    sleep 86400  # Sleep for 24 hours
+                fi
             fi
         else
             break

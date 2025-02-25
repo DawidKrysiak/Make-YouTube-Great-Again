@@ -104,6 +104,9 @@ def download_videos(url, category, dateafter=None, retries=3):
             elif "VPN/Proxy Detected" in str(e):
                 print(f"Skipping video due to VPN/Proxy detection: {url}")
                 return False
+            elif "This channel does not have a streams tab" in str(e):
+                print(f"Skipping video due to missing streams tab: {url}")
+                return False
             elif isinstance(e.exc_info[1], urllib3.exceptions.NewConnectionError):
                 print(f"Network error: {e}. Retrying in 1 minute...")
                 sleep(60)
