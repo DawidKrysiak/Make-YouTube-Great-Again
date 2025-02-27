@@ -4,8 +4,29 @@ from datetime import datetime, timedelta
 from time import sleep
 import random
 import re
+import logging
 from yt_dlp import YoutubeDL, DownloadError
 import urllib3
+
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+# Handler for logging INFO level messages to info.log
+info_handler = logging.FileHandler('info.log')
+info_handler.setLevel(logging.INFO)
+info_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+info_handler.setFormatter(info_formatter)
+
+# Handler for logging ERROR level messages to errors.log
+error_handler = logging.FileHandler('errors.log')
+error_handler.setLevel(logging.ERROR)
+error_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+error_handler.setFormatter(error_formatter)
+
+# Add handlers to the logger
+logger.addHandler(info_handler)
+logger.addHandler(error_handler)
 
 # Load configuration from config.json
 with open('./config/config.json', 'r') as config_file:
@@ -43,7 +64,7 @@ def delete_old_files(directory):
             file_modified = datetime.fromtimestamp(os.path.getmtime(file_path))
             if file_modified < cutoff:
                 os.remove(file_path)
-                print(f"Deleted old file: {file_path}")
+                logging.info(f"Deleted old file: {file_path}")
 
 # Function to clean up titles from special characters
 def clean_title(title):
@@ -61,7 +82,7 @@ def create_directories(base_path, data):
         sub_dir = os.path.join(main_dir, sub_dir_name)
         os.makedirs(sub_dir, exist_ok=True)
 
-        print(f"Created directory: {sub_dir}")
+        logging.info(f"Created directory: {sub_dir}")
 
 # Create directories for 'archive' and 'casual'
 create_directories(base_path, archive)
@@ -69,9 +90,9 @@ create_directories(base_path, casual)
 
 def download_videos(url, category, dateafter=None, retries=3):
     delay = randomised_delay()
-    print(f"Sleeping for {delay} seconds")
+    logging.info(f"Sleeping for {delay} seconds")
     sleep(delay)  # because YouTube doesn't like it when you download too fast
-    print("wake up")
+    logging.info("wake up")
 
     ydl_opts = {
         'outtmpl': f"{base_path}/{category}/%(uploader)s/{clean_title('%(title)s')}.%(ext)s",
@@ -82,8 +103,8 @@ def download_videos(url, category, dateafter=None, retries=3):
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
         'noplaylist': True,
         'download_archive': archive_log,
-        'quiet': False,
-        'no_warnings': False,
+        'quiet': True,
+        'no_warnings': True,
         'logger': MyLogger(),
         'progress_hooks': [my_hook],
     }
@@ -99,46 +120,45 @@ def download_videos(url, category, dateafter=None, retries=3):
             return result == 0
         except DownloadError as e:
             if "Premieres" in str(e):
-                print(f"Skipping premiere video: {url}")
+                logging.warning(f"Skipping premiere video: {url}")
                 return False
             elif "VPN/Proxy Detected" in str(e):
-                print(f"Skipping video due to VPN/Proxy detection: {url}")
+                logging.warning(f"Skipping video due to VPN/Proxy detection: {url}")
                 return False
             elif "This channel does not have a streams tab" in str(e):
-                print(f"Skipping video due to missing streams tab: {url}")
+                logging.warning(f"Skipping video due to missing streams tab: {url}")
                 return False
             elif isinstance(e.exc_info[1], urllib3.exceptions.NewConnectionError):
-                print(f"Network error: {e}. Retrying in 1 minute...")
+                logging.error(f"Network error: {e}. Retrying in 1 minute...")
                 sleep(60)
+                attempt += 1
+            elif "Read timed out" in str(e):
+                logging.error(f"Read timed out error: {e}. Retrying in 5 seconds...")
+                sleep(5)
                 attempt += 1
             else:
                 raise e
 
-    print(f"Failed to download video after {retries} attempts: {url}")
+    logging.error(f"Failed to download video after {retries} attempts: {url}")
     return False
 
 class MyLogger(object):
     def debug(self, msg):
-        if msg.startswith('[download]'):
-            print(msg)
-        elif msg.startswith('[youtube]'):
-            print(msg)
-        elif msg.startswith('[info]'):
-            print(msg)
+        pass  # Do nothing for debug messages
 
     def warning(self, msg):
-        print(f"WARNING: {msg}")
+        logging.warning(f"WARNING: {msg}")
 
     def error(self, msg):
-        print(f"ERROR: {msg}")
+        logging.error(f"ERROR: {msg}")
 
 def my_hook(d):
     if d['status'] == 'finished':
-        print('Done downloading, now converting ...')
+        logging.info('Done downloading, now converting ...')
     elif d['status'] == 'error':
-        print('Error occurred during download')
+        logging.error('Error occurred during download')
     elif d['status'] == 'downloading':
-        print(f"Downloading: {d['_percent_str']} at {d['_speed_str']} ETA: {d['_eta_str']}")
+        pass  # Do nothing for downloading messages
 
 for url, category in archive.items():
     dateafter = None
