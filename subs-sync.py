@@ -103,10 +103,12 @@ def download_videos(url, category, dateafter=None, retries=3):
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
         'noplaylist': True,
         'download_archive': archive_log,
-        'quiet': True,
+        'quiet': False,
         'no_warnings': True,
         'logger': MyLogger(),
         'progress_hooks': [my_hook],
+        'extractor_args': {'youtubetab': {'skip': 'authcheck'}},
+
     }
 
     if dateafter:
@@ -128,6 +130,15 @@ def download_videos(url, category, dateafter=None, retries=3):
             elif "This channel does not have a streams tab" in str(e):
                 logging.warning(f"Skipping video due to missing streams tab: {url}")
                 return False
+            elif "This video is available to this channel's members" in str(e):
+                logging.warning(f"Skipping members-only video: {url}")
+                return False
+            elif "This live event will begin" in str(e):
+                logging.warning(f"Skipping scheduled streams: {url}")
+                return False
+            elif "Playlists that require authentication" in str(e):
+                logging.warning(f"Skipping video due to authentication requirement: {url}")
+                return False
             elif isinstance(e.exc_info[1], urllib3.exceptions.NewConnectionError):
                 logging.error(f"Network error: {e}. Retrying in 1 minute...")
                 sleep(60)
@@ -136,8 +147,13 @@ def download_videos(url, category, dateafter=None, retries=3):
                 logging.error(f"Read timed out error: {e}. Retrying in 5 seconds...")
                 sleep(5)
                 attempt += 1
+            elif "Network is unreachable" in str(object=e):
+                logging.error(f"Network is unreachable error: {e}. Retrying in 5 seconds...")
+                sleep(5)
+                attempt += 1
             else:
-                raise e
+                print(e)
+                pass
 
     logging.error(f"Failed to download video after {retries} attempts: {url}")
     return False
@@ -164,7 +180,7 @@ for url, category in archive.items():
     dateafter = None
     if not initial_seeding:
         dateafter = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
-    
+
     download_videos(url, category, dateafter)
 
 for url, category in casual.items():

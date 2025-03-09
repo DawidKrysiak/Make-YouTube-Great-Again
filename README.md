@@ -43,7 +43,7 @@ The solution that works for me (for now):
 * using the `get cookies.txt LOCALLY` extension, download the cookies and put them in `./config/cookies.txt` file
 * close the incognito window. 
 
-That process ensures that those cookies will not be imediately invalidated by Youtube - content comes from a unique login session that is never overwritten by your activity because... you will never log in to that unique incognito session ever again (if you download the cookies from the normal session, cookies might be useless in a couple of MINUTES!)
+That process ensures that those cookies will not be immediately invalidated by Youtube - content comes from a unique login session that is never overwritten by your activity because... you will never log in to that unique incognito session ever again (if you download the cookies from the normal session, cookies might be useless in a couple of MINUTES!)
 
 * populate the './config/archive.txt' and './config/casual.txt' files with your favourite channels and assign them a category. The format is `URL`|`category`. For example:
 
@@ -63,7 +63,7 @@ https://www.youtube.com/@BaumgartnerRestoration|art
 
 # New stuff and "gotcha's'"
 This code was designed to help **ME** with this task, so I do not assume it wil fit everyone's needs.
-* MP4 conversion: I am converting, for consistency, all videos to MP4 using ffmpeg. If you wish for it to work, install ffmpeg aplicable to your OS. Otherwise, remove the line `        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',` from the code and yt-dlp will save the file in whatver is the original format.
+* MP4 conversion: I am converting, for consistency, all videos to MP4 using ffmpeg. If you wish for it to work, install ffmpeg applicable to your OS. Otherwise, remove the line `        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',` from the code and yt-dlp will save the file in whatever is the original format.
 * Bash alternative. Originally served as a debugging tool for the Python script but then I realised it might be useful to someone.
 What I see is possible applications:
     * Bash script used if you have a dedicated Linux/MacOS/WSL system you can simply trigger via crontab
