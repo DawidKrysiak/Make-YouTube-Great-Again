@@ -1,3 +1,0 @@
-content of the command:
-
-yt-dlp --cookies-from-browser <your browser name e.g. chrome, firefox, brave, safari > --cookies cookies.txt

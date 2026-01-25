@@ -5,7 +5,8 @@ from time import sleep
 import random
 import re
 import logging
-from yt_dlp import YoutubeDL, DownloadError
+from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
 import urllib3
 
 # Configure logging
@@ -93,6 +94,7 @@ def download_videos(url, category, dateafter=None, retries=3):
     logging.info(f"Sleeping for {delay} seconds")
     sleep(delay)  # because YouTube doesn't like it when you download too fast
     logging.info("wake up")
+    logging.info(f"Starting download of {url}")
 
     ydl_opts = {
         'outtmpl': f"{base_path}/{category}/%(uploader)s/{clean_title('%(title)s')}.%(ext)s",
@@ -108,7 +110,8 @@ def download_videos(url, category, dateafter=None, retries=3):
         'logger': MyLogger(),
         'progress_hooks': [my_hook],
         'extractor_args': {'youtubetab': {'skip': 'authcheck'}},
-
+        'js_runtimes': {'node': {}, 'deno': {}},
+        'remote_components': ['ejs:npm'],
     }
 
     if dateafter:
@@ -117,7 +120,7 @@ def download_videos(url, category, dateafter=None, retries=3):
     attempt = 0
     while attempt < retries:
         try:
-            with YoutubeDL(ydl_opts) as ydl:
+            with YoutubeDL(ydl_opts) as ydl:  # type: ignore
                 result = ydl.download([url])
             return result == 0
         except DownloadError as e:
@@ -170,7 +173,8 @@ class MyLogger(object):
 
 def my_hook(d):
     if d['status'] == 'finished':
-        logging.info('Done downloading, now converting ...')
+        filename = d.get('filename', 'unknown')
+        logging.info(f'Done downloading {filename}, now converting ...')
     elif d['status'] == 'error':
         logging.error('Error occurred during download')
     elif d['status'] == 'downloading':
