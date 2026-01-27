@@ -9,25 +9,32 @@ from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 import urllib3
 
+# Setup logging with timestamped log files (matching bash-sync.sh)
+log_dir = './logs'
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, f"sync_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+
 # Configure logging
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
-# Handler for logging INFO level messages to info.log
-info_handler = logging.FileHandler('info.log')
-info_handler.setLevel(logging.INFO)
-info_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-info_handler.setFormatter(info_formatter)
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+console_handler.setFormatter(console_formatter)
 
-# Handler for logging ERROR level messages to errors.log
-error_handler = logging.FileHandler('errors.log')
-error_handler.setLevel(logging.ERROR)
-error_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-error_handler.setFormatter(error_formatter)
+# File handler for all logs
+file_handler = logging.FileHandler(log_file)
+file_handler.setLevel(logging.INFO)
+file_formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+file_handler.setFormatter(file_formatter)
 
 # Add handlers to the logger
-logger.addHandler(info_handler)
-logger.addHandler(error_handler)
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
+
+logging.info("=== Starting YouTube Sync ===")
 
 # Load configuration from config.json
 with open('./config/config.json', 'r') as config_file:
@@ -107,6 +114,8 @@ def download_videos(url, category, dateafter=None, retries=3):
         'download_archive': archive_log,
         'quiet': False,
         'no_warnings': True,
+        'nopart': True,
+        'nocontinue': True,
         'logger': MyLogger(),
         'progress_hooks': [my_hook],
         'extractor_args': {'youtubetab': {'skip': 'authcheck'}},
@@ -163,7 +172,7 @@ def download_videos(url, category, dateafter=None, retries=3):
 
 class MyLogger(object):
     def debug(self, msg):
-        pass  # Do nothing for debug messages
+        logging.info(msg)  # Log debug messages as info to see yt-dlp output
 
     def warning(self, msg):
         logging.warning(f"WARNING: {msg}")
@@ -174,20 +183,30 @@ class MyLogger(object):
 def my_hook(d):
     if d['status'] == 'finished':
         filename = d.get('filename', 'unknown')
-        logging.info(f'Done downloading {filename}, now converting ...')
+        logging.info(f'Downloaded: {filename}')
     elif d['status'] == 'error':
         logging.error('Error occurred during download')
     elif d['status'] == 'downloading':
-        pass  # Do nothing for downloading messages
+        # Show progress information
+        if '_percent_str' in d:
+            percent = d.get('_percent_str', 'N/A')
+            speed = d.get('_speed_str', 'N/A')
+            eta = d.get('_eta_str', 'N/A')
+            logging.info(f"Downloading: {percent} at {speed} ETA: {eta}")
 
+logging.info(f"Processing {len(archive)} archive URLs")
 for url, category in archive.items():
+    logging.info(f"Processing archive URL: {url} with category: {category}")
     dateafter = None
     if not initial_seeding:
         dateafter = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
 
     download_videos(url, category, dateafter)
+    logging.info(f"Finished processing archive URL: {url}")
 
+logging.info(f"Processing {len(casual)} casual URLs")
 for url, category in casual.items():
+    logging.info(f"Processing casual URL: {url} with category: {category}")
     dateafter = None
     if initial_seeding:
         dateafter = (datetime.now() - timedelta(days=30)).strftime('%Y%m%d')
@@ -200,3 +219,6 @@ for url, category in casual.items():
     sub_dir_name = url.split('@')[1]
     sub_dir = os.path.join(base_path, category, sub_dir_name)
     delete_old_files(sub_dir)
+    logging.info(f"Finished processing casual URL: {url}")
+
+logging.info("=== YouTube Sync Completed ===")
