@@ -94,6 +94,33 @@ delete_old_files() {
     done
 }
 
+# Check if video with same title already exists (failover for lost archive)
+check_existing_video() {
+    local video_id=$1
+    local title=$2
+    local output_dir=$3
+    
+    # Check if a file with the same title (any extension) exists
+    if [[ -d "$output_dir" ]]; then
+        for file in "$output_dir"/*; do
+            if [[ -f "$file" ]]; then
+                # Get filename without extension
+                local basename=$(basename "$file")
+                local name_without_ext="${basename%.*}"
+                
+                if [[ "$name_without_ext" == "$title" ]]; then
+                    log "⚠️  Video already exists: $file"
+                    log "Adding video ID $video_id to archive to prevent future checks"
+                    # Add to archive to skip in future
+                    echo "youtube $video_id" >> "$ARCHIVE_FILE"
+                    return 0
+                fi
+            fi
+        done
+    fi
+    return 1
+}
+
 # Download videos
 download_videos() {
     local url=$1
@@ -101,6 +128,46 @@ download_videos() {
     local dateafter=$3
     local retries=3
     local attempt=0
+
+    # First, extract video info to check if it already exists (failover for lost archive)
+    local info_command=(
+        'yt-dlp'
+        '--dump-json'
+        '--no-warnings'
+        '--skip-download'
+        '--cookies' "$COOKIES_FILE"
+        '--flat-playlist'
+    )
+    
+    if [[ -n "$dateafter" ]]; then
+        info_command+=('--dateafter' "$dateafter")
+    fi
+    
+    info_command+=("$url")
+    
+    # Extract video info
+    local video_info
+    video_info=$("${info_command[@]}" 2>/dev/null)
+    
+    if [[ -n "$video_info" ]]; then
+        # Parse each line as separate JSON (for playlists)
+        while IFS= read -r line; do
+            if [[ -n "$line" ]]; then
+                local video_id=$(echo "$line" | jq -r '.id // empty')
+                local title=$(echo "$line" | jq -r '.title // empty')
+                local uploader=$(echo "$line" | jq -r '.uploader // "Unknown"')
+                
+                if [[ -n "$video_id" && -n "$title" ]]; then
+                    local output_dir="$BASE_PATH/$category/$uploader"
+                    
+                    # Check if file with same title already exists
+                    if check_existing_video "$video_id" "$title" "$output_dir"; then
+                        continue
+                    fi
+                fi
+            fi
+        done <<< "$video_info"
+    fi
 
     while [[ $attempt -lt $retries ]]; do
         local delay=$(randomized_delay)
