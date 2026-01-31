@@ -5,28 +5,36 @@ from time import sleep
 import random
 import re
 import logging
-from yt_dlp import YoutubeDL, DownloadError
+from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
 import urllib3
+
+# Setup logging with timestamped log files (matching bash-sync.sh)
+log_dir = './logs'
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, f"sync_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
 
 # Configure logging
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
-# Handler for logging INFO level messages to info.log
-info_handler = logging.FileHandler('info.log')
-info_handler.setLevel(logging.INFO)
-info_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-info_handler.setFormatter(info_formatter)
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+console_handler.setFormatter(console_formatter)
 
-# Handler for logging ERROR level messages to errors.log
-error_handler = logging.FileHandler('errors.log')
-error_handler.setLevel(logging.ERROR)
-error_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-error_handler.setFormatter(error_formatter)
+# File handler for all logs
+file_handler = logging.FileHandler(log_file)
+file_handler.setLevel(logging.INFO)
+file_formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+file_handler.setFormatter(file_formatter)
 
 # Add handlers to the logger
-logger.addHandler(info_handler)
-logger.addHandler(error_handler)
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
+
+logging.info("=== Starting YouTube Sync ===")
 
 # Load configuration from config.json
 with open('./config/config.json', 'r') as config_file:
@@ -70,6 +78,26 @@ def delete_old_files(directory):
 def clean_title(title):
     return re.sub(r'[\\/*?:"<>|]', "", title)
 
+# Function to check if a video with the same title already exists (failover for lost archive)
+def check_existing_title(video_info, output_dir):
+    """Check if a file with the same title (any extension) already exists."""
+    try:
+        title = clean_title(video_info.get('title', ''))
+        if not title:
+            return None
+        
+        # Search for files with the same title but any extension
+        if os.path.exists(output_dir):
+            for filename in os.listdir(output_dir):
+                # Remove extension from filename
+                name_without_ext = os.path.splitext(filename)[0]
+                if name_without_ext == title:
+                    return os.path.join(output_dir, filename)
+        return None
+    except Exception as e:
+        logging.warning(f"Error checking existing title: {e}")
+        return None
+
 # Create directories for the categories
 def create_directories(base_path, data):
     for url, category in data.items():
@@ -93,6 +121,42 @@ def download_videos(url, category, dateafter=None, retries=3):
     logging.info(f"Sleeping for {delay} seconds")
     sleep(delay)  # because YouTube doesn't like it when you download too fast
     logging.info("wake up")
+    logging.info(f"Starting download of {url}")
+
+    # First, extract video info to check if it already exists (failover for lost archive)
+    info_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': 'in_playlist',
+        'cookiefile': cookies_file,
+    }
+    
+    if dateafter:
+        info_opts['dateafter'] = dateafter
+    
+    try:
+        with YoutubeDL(info_opts) as ydl:  # type: ignore
+            info = ydl.extract_info(url, download=False)
+            if info:
+                # Handle both single videos and playlists
+                entries = info.get('entries', [info]) if 'entries' in info else [info]
+                
+                for entry in entries:
+                    if entry and entry.get('id'):
+                        video_id = entry.get('id')
+                        uploader = entry.get('uploader', 'Unknown')
+                        output_dir = os.path.join(base_path, category, uploader)
+                        
+                        # Check if file with same title already exists
+                        existing_file = check_existing_title(entry, output_dir)
+                        if existing_file:
+                            logging.info(f"⚠️  Video already exists: {existing_file}")
+                            logging.info(f"Adding video ID {video_id} to archive to prevent future checks")
+                            # Add to archive to skip in future
+                            with open(archive_log, 'a') as f:
+                                f.write(f"youtube {video_id}\n")
+    except Exception as e:
+        logging.debug(f"Could not pre-check video info: {e}")
 
     ydl_opts = {
         'outtmpl': f"{base_path}/{category}/%(uploader)s/{clean_title('%(title)s')}.%(ext)s",
@@ -105,10 +169,13 @@ def download_videos(url, category, dateafter=None, retries=3):
         'download_archive': archive_log,
         'quiet': False,
         'no_warnings': True,
+        'nopart': True,
+        'nocontinue': True,
         'logger': MyLogger(),
         'progress_hooks': [my_hook],
         'extractor_args': {'youtubetab': {'skip': 'authcheck'}},
-
+        'js_runtimes': {'node': {}, 'deno': {}},
+        'remote_components': ['ejs:npm'],
     }
 
     if dateafter:
@@ -117,7 +184,7 @@ def download_videos(url, category, dateafter=None, retries=3):
     attempt = 0
     while attempt < retries:
         try:
-            with YoutubeDL(ydl_opts) as ydl:
+            with YoutubeDL(ydl_opts) as ydl:  # type: ignore
                 result = ydl.download([url])
             return result == 0
         except DownloadError as e:
@@ -160,7 +227,7 @@ def download_videos(url, category, dateafter=None, retries=3):
 
 class MyLogger(object):
     def debug(self, msg):
-        pass  # Do nothing for debug messages
+        logging.info(msg)  # Log debug messages as info to see yt-dlp output
 
     def warning(self, msg):
         logging.warning(f"WARNING: {msg}")
@@ -170,20 +237,31 @@ class MyLogger(object):
 
 def my_hook(d):
     if d['status'] == 'finished':
-        logging.info('Done downloading, now converting ...')
+        filename = d.get('filename', 'unknown')
+        logging.info(f'Downloaded: {filename}')
     elif d['status'] == 'error':
         logging.error('Error occurred during download')
     elif d['status'] == 'downloading':
-        pass  # Do nothing for downloading messages
+        # Show progress information
+        if '_percent_str' in d:
+            percent = d.get('_percent_str', 'N/A')
+            speed = d.get('_speed_str', 'N/A')
+            eta = d.get('_eta_str', 'N/A')
+            logging.info(f"Downloading: {percent} at {speed} ETA: {eta}")
 
+logging.info(f"Processing {len(archive)} archive URLs")
 for url, category in archive.items():
+    logging.info(f"Processing archive URL: {url} with category: {category}")
     dateafter = None
     if not initial_seeding:
         dateafter = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
 
     download_videos(url, category, dateafter)
+    logging.info(f"Finished processing archive URL: {url}")
 
+logging.info(f"Processing {len(casual)} casual URLs")
 for url, category in casual.items():
+    logging.info(f"Processing casual URL: {url} with category: {category}")
     dateafter = None
     if initial_seeding:
         dateafter = (datetime.now() - timedelta(days=30)).strftime('%Y%m%d')
@@ -196,3 +274,6 @@ for url, category in casual.items():
     sub_dir_name = url.split('@')[1]
     sub_dir = os.path.join(base_path, category, sub_dir_name)
     delete_old_files(sub_dir)
+    logging.info(f"Finished processing casual URL: {url}")
+
+logging.info("=== YouTube Sync Completed ===")

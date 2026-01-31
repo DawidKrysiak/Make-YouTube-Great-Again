@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# Setup logging
+LOG_DIR="./logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/sync_$(date +%Y%m%d_%H%M%S).log"
+
+# Logging function
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
 # Load configuration from config.json
 CONFIG_FILE="./config/config.json"
 CONFIG=$(cat "$CONFIG_FILE")
@@ -8,6 +18,8 @@ RETENTION_PERIOD=$(echo "$CONFIG" | jq -r '.retention_period')
 COOKIES_FILE=$(echo "$CONFIG" | jq -r '.cookies_file')
 BASE_PATH=$(echo "$CONFIG" | jq -r '.base_path')
 ARCHIVE_FILE="./config/download_archive.txt"
+
+log "=== Starting YouTube Sync ==="
 
 # Clear arrays to avoid any potential caching issues
 ARCHIVE_URLS=()
@@ -18,12 +30,12 @@ CASUAL_CATEGORIES=()
 # Load URLs from text files
 load_urls() {
     local file_path=$1
-    local -n urls=$2
-    local -n categories=$3
+    local urls_var=$2
+    local categories_var=$3
     while IFS='|' read -r url category; do
         if [[ -n "$url" && -n "$category" ]]; then
-            urls+=("$url")
-            categories+=("$category")
+            eval "$urls_var+=(\"$url\")"
+            eval "$categories_var+=(\"$category\")"
         else
             echo "Invalid line format (missing '|'): $url|$category"
         fi
@@ -34,22 +46,13 @@ load_urls() {
 load_urls "./config/archive.txt" ARCHIVE_URLS ARCHIVE_CATEGORIES
 load_urls "./config/casual.txt" CASUAL_URLS CASUAL_CATEGORIES
 
-# Debugging output to check loaded URLs
-echo "Loaded archive URLs:"
-for i in "${!ARCHIVE_URLS[@]}"; do
-    echo "URL: ${ARCHIVE_URLS[$i]}, Category: ${ARCHIVE_CATEGORIES[$i]}"
-done
-
-echo "Loaded casual URLs:"
-for i in "${!CASUAL_URLS[@]}"; do
-    echo "URL: ${CASUAL_URLS[$i]}, Category: ${CASUAL_CATEGORIES[$i]}"
-done
-
 # Create directories
 create_directories() {
     local base_path=$1
-    local -n urls=$2
-    local -n categories=$3
+    local urls_var=$2
+    local categories_var=$3
+    eval "local urls=(\"\${$urls_var[@]}\")"
+    eval "local categories=(\"\${$categories_var[@]}\")"
     for i in "${!urls[@]}"; do
         local url=${urls[$i]}
         local category=${categories[$i]}
@@ -91,6 +94,33 @@ delete_old_files() {
     done
 }
 
+# Check if video with same title already exists (failover for lost archive)
+check_existing_video() {
+    local video_id=$1
+    local title=$2
+    local output_dir=$3
+    
+    # Check if a file with the same title (any extension) exists
+    if [[ -d "$output_dir" ]]; then
+        for file in "$output_dir"/*; do
+            if [[ -f "$file" ]]; then
+                # Get filename without extension
+                local basename=$(basename "$file")
+                local name_without_ext="${basename%.*}"
+                
+                if [[ "$name_without_ext" == "$title" ]]; then
+                    log "⚠️  Video already exists: $file"
+                    log "Adding video ID $video_id to archive to prevent future checks"
+                    # Add to archive to skip in future
+                    echo "youtube $video_id" >> "$ARCHIVE_FILE"
+                    return 0
+                fi
+            fi
+        done
+    fi
+    return 1
+}
+
 # Download videos
 download_videos() {
     local url=$1
@@ -98,6 +128,46 @@ download_videos() {
     local dateafter=$3
     local retries=3
     local attempt=0
+
+    # First, extract video info to check if it already exists (failover for lost archive)
+    local info_command=(
+        'yt-dlp'
+        '--dump-json'
+        '--no-warnings'
+        '--skip-download'
+        '--cookies' "$COOKIES_FILE"
+        '--flat-playlist'
+    )
+    
+    if [[ -n "$dateafter" ]]; then
+        info_command+=('--dateafter' "$dateafter")
+    fi
+    
+    info_command+=("$url")
+    
+    # Extract video info
+    local video_info
+    video_info=$("${info_command[@]}" 2>/dev/null)
+    
+    if [[ -n "$video_info" ]]; then
+        # Parse each line as separate JSON (for playlists)
+        while IFS= read -r line; do
+            if [[ -n "$line" ]]; then
+                local video_id=$(echo "$line" | jq -r '.id // empty')
+                local title=$(echo "$line" | jq -r '.title // empty')
+                local uploader=$(echo "$line" | jq -r '.uploader // "Unknown"')
+                
+                if [[ -n "$video_id" && -n "$title" ]]; then
+                    local output_dir="$BASE_PATH/$category/$uploader"
+                    
+                    # Check if file with same title already exists
+                    if check_existing_video "$video_id" "$title" "$output_dir"; then
+                        continue
+                    fi
+                fi
+            fi
+        done <<< "$video_info"
+    fi
 
     while [[ $attempt -lt $retries ]]; do
         local delay=$(randomized_delay)
@@ -108,96 +178,93 @@ download_videos() {
             'yt-dlp'
             '--output' "$BASE_PATH/$category/%(uploader)s/%(title)s.%(ext)s"
             '--cookies' "$COOKIES_FILE"
-            '--verbose'
-            '--format' 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]'
-            '--yes-playlist'
+            '--sleep-interval' '3'
+            '--max-sleep-interval' '69'
+            '--sleep-subtitles' '1'
+            '--format' 'best[ext=mp4]'
+            '--no-playlist'
             '--download-archive' "$ARCHIVE_FILE"
+            '--print' 'after_move:Downloaded: %(filepath)s'
+            '--no-warnings'
+            '--js-runtimes' 'node,deno'
+            '--remote-components' 'ejs:npm'
+            '--no-continue'
+            '--no-part'
+            '--extractor-args' 'youtubetab:skip=authcheck'
             "$url"
         )
         if [[ -n "$dateafter" ]]; then
             command+=('--dateafter' "$dateafter")
         fi
 
-        echo "Running command: ${command[*]}"
-        "${command[@]}"
-
+        log "Starting download of $url"
+        local output
+        output=$("${command[@]}" 2>&1)
         local result=$?
+        echo "$output" | tee -a "$LOG_FILE"
+
         if [[ $result -ne 0 ]]; then
-            echo "Command failed with exit code $result"
-            if grep -q "Premieres" <<< "$result"; then
-                echo "Skipping premiere video: $url"
-                return
-            elif grep -q "VPN/Proxy Detected" <<< "$result"; then
-                echo "Skipping video due to VPN/Proxy detection: $url"
-                return
-            elif grep -q "This channel does not have a streams tab" <<< "$result"; then
-                echo "Skipping video due to missing streams tab: $url"
-                return
-            elif grep -q "Network is unreachable" <<< "$result"; then
-                echo "Network error: $result. Retrying in 1 minute..."
-                sleep 60
+            log "Download failed for $url"
+            if echo "$output" | grep -q "Premieres"; then
+                log "Skipping premiere video: $url"
+                return 0
+            elif echo "$output" | grep -q "VPN/Proxy Detected"; then
+                log "Skipping video due to VPN/Proxy detection: $url"
+                return 0
+            elif echo "$output" | grep -q "This channel does not have a streams tab"; then
+                log "Skipping video due to missing streams tab: $url"
+                return 0
+            elif echo "$output" | grep -q "This video is available to this channel's members"; then
+                log "Skipping members-only video: $url"
+                return 0
+            elif echo "$output" | grep -q "This live event will begin"; then
+                log "Skipping scheduled streams: $url"
+                return 0
+            elif echo "$output" | grep -q "Playlists that require authentication"; then
+                log "Skipping video due to authentication requirement: $url"
+                return 0
+            elif echo "$output" | grep -q "Network is unreachable"; then
+                log "Network error. Retrying in 5 seconds..."
+                sleep 5
+                attempt=$((attempt + 1))
+            elif echo "$output" | grep -q "Read timed out"; then
+                log "Read timed out. Retrying in 5 seconds..."
+                sleep 5
                 attempt=$((attempt + 1))
             else
-                attempt=$((attempt + 1))
-                if [[ $attempt -eq $retries ]]; then
-                    echo "Stopping process for 24 hours due to repeated errors."
-                    sleep 86400  # Sleep for 24 hours
-                fi
+                log "Failed to download after $retries attempts: $url"
+                return 1
             fi
         else
-            break
+            log "Successfully downloaded from $url"
+            return 0
         fi
     done
-}
-
-# Initial seeding download
-initial_seeding_download() {
-    local url=$1
-    local category=$2
-    local is_archive=$3
-    local current_date=$(date +%Y%m%d)
-    while true; do
-        if [[ "$is_archive" == "false" ]]; then
-            local dateafter=$(date -d "$current_date -30 days" +%Y%m%d)
-            download_videos "$url" "$category" "$dateafter"
-            local result
-            result=$(yt-dlp --dateafter "$dateafter" "$url" 2>&1)
-            if echo "$result" | grep -q "No more videos to download"; then
-                echo "No more videos to download for $url"
-                break
-            fi
-        else
-            download_videos "$url" "$category"
-            local result
-            result=$(yt-dlp "$url" 2>&1)
-            if echo "$result" | grep -q "No more videos to download"; then
-                echo "No more videos to download for $url"
-                break
-            fi
-        fi
-        current_date=$(date -d "$current_date -30 days" +%Y%m%d)
-    done
+    log "Failed to download after $retries attempts: $url"
+    return 1
 }
 
 # Process archive URLs
+log "Processing ${#ARCHIVE_URLS[@]} archive URLs"
 for i in "${!ARCHIVE_URLS[@]}"; do
     url=${ARCHIVE_URLS[$i]}
     category=${ARCHIVE_CATEGORIES[$i]}
-    echo "Processing archive URL: $url with category: $category"
-    if [[ "$INITIAL_SEEDING" == "true" ]]; then
-        initial_seeding_download "$url" "$category" "true"
-    else
+    log "Processing archive URL: $url with category: $category"
+    if [[ "$INITIAL_SEEDING" == "false" ]]; then
         dateafter=$(date -d "yesterday" +%Y%m%d)
         download_videos "$url" "$category" "$dateafter"
+    else
+        download_videos "$url" "$category"
     fi
-    echo "Finished processing archive URL: $url"
+    log "Finished processing archive URL: $url"
 done
 
 # Process casual URLs
+log "Processing ${#CASUAL_URLS[@]} casual URLs"
 for i in "${!CASUAL_URLS[@]}"; do
     url=${CASUAL_URLS[$i]}
     category=${CASUAL_CATEGORIES[$i]}
-    echo "Processing casual URL: $url with category: $category"
+    log "Processing casual URL: $url with category: $category"
     if [[ "$INITIAL_SEEDING" == "true" ]]; then
         dateafter=$(date -d "30 days ago" +%Y%m%d)
         download_videos "$url" "$category" "$dateafter"
@@ -206,11 +273,11 @@ for i in "${!CASUAL_URLS[@]}"; do
         download_videos "$url" "$category" "$dateafter"
     fi
 
-    # Delete old files in casual directories if not initial seeding
-    if [[ "$INITIAL_SEEDING" == "false" ]]; then
-        sub_dir_name=$(echo "$url" | cut -d'@' -f2)
-        sub_dir="$BASE_PATH/$category/$sub_dir_name"
-        delete_old_files "$sub_dir"
-    fi
-    echo "Finished processing casual URL: $url"
+    # Delete old files in casual directories
+    sub_dir_name=$(echo "$url" | cut -d'@' -f2)
+    sub_dir="$BASE_PATH/$category/$sub_dir_name"
+    delete_old_files "$sub_dir"
+    log "Finished processing casual URL: $url"
 done
+
+log "=== YouTube Sync Completed ==="

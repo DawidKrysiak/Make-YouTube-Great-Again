@@ -69,6 +69,73 @@ What I see is possible applications:
     * Bash script used if you have a dedicated Linux/MacOS/WSL system you can simply trigger via crontab
     * Python script is more universal, can be deployed in a Docker container, on Windows natively etc.
 
+# JavaScript Runtime Setup
+
+As of recent updates, yt-dlp requires a JavaScript runtime to solve YouTube's challenge scripts. Without this, downloads may fail with "challenge solving failed" errors.
+
+## Installing a JavaScript Runtime
+
+Choose one of the supported runtimes below. Deno is recommended for simplicity.
+
+### Deno (Recommended)
+Deno is the easiest to set up and works out of the box.
+
+#### Windows
+Download from [https://deno.com](https://deno.com) or use winget:
+```bash
+winget install Deno.Deno
+```
+
+#### Linux
+Download from [https://deno.com](https://deno.com) or use your package manager:
+```bash
+# Ubuntu/Debian
+curl -fsSL https://deno.land/install.sh | sh
+# Or using apt (may be older version)
+sudo apt install deno
+```
+
+#### macOS
+Download from [https://deno.com](https://deno.com) or use Homebrew:
+```bash
+brew install deno
+```
+
+### Node.js (Alternative)
+Node.js v20.0.0 or later is required.
+
+#### Windows
+Download the installer from [https://nodejs.org](https://nodejs.org).
+
+#### Linux
+```bash
+# Ubuntu/Debian
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+
+#### macOS
+```bash
+brew install node
+```
+
+### Other Options
+- **Bun**: Similar to Node.js, install via [https://bun.com](https://bun.com)
+- **QuickJS**: Advanced users only, install via package manager
+
+## yt-dlp Configuration
+Once you have a runtime installed, yt-dlp will automatically detect and use it. For Deno/Node.js, no additional configuration is needed.
+
+If you encounter issues, you can explicitly specify the runtime:
+```bash
+yt-dlp --js-runtimes deno [other options]
+# or
+yt-dlp --js-runtimes node [other options]
+```
+
+## EJS Scripts
+The script automatically downloads required EJS challenge solver scripts from npm when needed. No manual installation required.
+
 # Known Issues
 * 404 Errors - check your cookies.txt file. This needs to be Netscape format with newline characters applicable to your system. For me (MacOS, Linux) it's LF, but in Windows it's CRLF - you can change the characters if needed in text editors like Notepad++ or VSCode/Codium
 * 'This content isn't available' - if this happens occasionally, it's just a deleted/set to non-public after it was published -yt-dl uses the YT's playlists which might have references to dead content. If this happens to every single attempt, it means YT got wise and shadow ban you :) (did I mentioned they will go above and beyond to make your life miserable?) I added a randomised delay between channels and videos (as well as a delay for subtitles).
