@@ -94,24 +94,34 @@ delete_old_files() {
     done
 }
 
-# Check if video with same title already exists (failover for lost archive)
+# Check if video with exact filename already exists (failover for lost archive)
 check_existing_video() {
     local video_id=$1
-    local title=$2
-    local output_dir=$3
+    local expected_path=$2
     
-    # Check if a file with the same title (any extension) exists
-    if [[ -d "$output_dir" ]]; then
-        for file in "$output_dir"/*; do
+    # Get the base filename without extension
+    local base_path="${expected_path%.*}"
+    local directory=$(dirname "$base_path")
+    local basename_no_ext=$(basename "$base_path")
+    
+    # Check if exact file exists
+    if [[ -f "$expected_path" ]]; then
+        log "⚠️  Video already exists: $expected_path"
+        log "Adding video ID $video_id to archive to prevent future checks"
+        echo "youtube $video_id" >> "$ARCHIVE_FILE"
+        return 0
+    fi
+    
+    # Check for files with same base name but different extensions
+    if [[ -d "$directory" ]]; then
+        for file in "$directory"/*; do
             if [[ -f "$file" ]]; then
-                # Get filename without extension
-                local basename=$(basename "$file")
-                local name_without_ext="${basename%.*}"
+                local file_without_ext="${file%.*}"
+                local file_basename_no_ext=$(basename "$file_without_ext")
                 
-                if [[ "$name_without_ext" == "$title" ]]; then
+                if [[ "$file_basename_no_ext" == "$basename_no_ext" ]]; then
                     log "⚠️  Video already exists: $file"
                     log "Adding video ID $video_id to archive to prevent future checks"
-                    # Add to archive to skip in future
                     echo "youtube $video_id" >> "$ARCHIVE_FILE"
                     return 0
                 fi
@@ -132,11 +142,11 @@ download_videos() {
     # First, extract video info to check if it already exists (failover for lost archive)
     local info_command=(
         'yt-dlp'
-        '--dump-json'
+        '--print' '%(id)s|%(filepath)s'
+        '--output' "$BASE_PATH/$category/%(uploader)s/%(title)s.%(ext)s"
         '--no-warnings'
         '--skip-download'
         '--cookies' "$COOKIES_FILE"
-        '--flat-playlist'
     )
     
     if [[ -n "$dateafter" ]]; then
@@ -145,25 +155,17 @@ download_videos() {
     
     info_command+=("$url")
     
-    # Extract video info
+    # Extract video info with expected filenames
     local video_info
     video_info=$("${info_command[@]}" 2>/dev/null)
     
     if [[ -n "$video_info" ]]; then
-        # Parse each line as separate JSON (for playlists)
-        while IFS= read -r line; do
-            if [[ -n "$line" ]]; then
-                local video_id=$(echo "$line" | jq -r '.id // empty')
-                local title=$(echo "$line" | jq -r '.title // empty')
-                local uploader=$(echo "$line" | jq -r '.uploader // "Unknown"')
-                
-                if [[ -n "$video_id" && -n "$title" ]]; then
-                    local output_dir="$BASE_PATH/$category/$uploader"
-                    
-                    # Check if file with same title already exists
-                    if check_existing_video "$video_id" "$title" "$output_dir"; then
-                        continue
-                    fi
+        # Parse output: each line is "video_id|expected_filepath"
+        while IFS='|' read -r video_id expected_path; do
+            if [[ -n "$video_id" && -n "$expected_path" ]]; then
+                # Check if file with same name already exists
+                if check_existing_video "$video_id" "$expected_path"; then
+                    continue
                 fi
             fi
         done <<< "$video_info"
@@ -222,6 +224,9 @@ download_videos() {
                 return 0
             elif echo "$output" | grep -q "Playlists that require authentication"; then
                 log "Skipping video due to authentication requirement: $url"
+                return 0
+            elif echo "$output" | grep -qE "416|Range Not Satisfiable"; then
+                log "Skipping video with HTTP 416 error (corrupted partial download): $url"
                 return 0
             elif echo "$output" | grep -q "Network is unreachable"; then
                 log "Network error. Retrying in 5 seconds..."

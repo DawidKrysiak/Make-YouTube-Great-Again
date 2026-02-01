@@ -74,28 +74,31 @@ def delete_old_files(directory):
                 os.remove(file_path)
                 logging.info(f"Deleted old file: {file_path}")
 
-# Function to clean up titles from special characters
-def clean_title(title):
-    return re.sub(r'[\\/*?:"<>|]', "", title)
-
 # Function to check if a video with the same title already exists (failover for lost archive)
-def check_existing_title(video_info, output_dir):
-    """Check if a file with the same title (any extension) already exists."""
+def check_existing_video_by_filename(ydl, video_info):
+    """Check if a file with the exact filename already exists using yt-dlp's prepare_filename."""
     try:
-        title = clean_title(video_info.get('title', ''))
-        if not title:
-            return None
+        # Get the exact filename that yt-dlp will use
+        expected_filename = ydl.prepare_filename(video_info)
         
-        # Search for files with the same title but any extension
-        if os.path.exists(output_dir):
-            for filename in os.listdir(output_dir):
-                # Remove extension from filename
-                name_without_ext = os.path.splitext(filename)[0]
-                if name_without_ext == title:
-                    return os.path.join(output_dir, filename)
+        # Check if any file with the same name (but possibly different extension) exists
+        if os.path.exists(expected_filename):
+            return expected_filename
+        
+        # Also check for files with same base name but different extensions
+        base_path = os.path.splitext(expected_filename)[0]
+        directory = os.path.dirname(base_path)
+        basename = os.path.basename(base_path)
+        
+        if os.path.exists(directory):
+            for filename in os.listdir(directory):
+                file_without_ext = os.path.splitext(filename)[0]
+                if file_without_ext == basename:
+                    return os.path.join(directory, filename)
+        
         return None
     except Exception as e:
-        logging.warning(f"Error checking existing title: {e}")
+        logging.warning(f"Error checking existing video: {e}")
         return None
 
 # Create directories for the categories
@@ -135,31 +138,35 @@ def download_videos(url, category, dateafter=None, retries=3):
         info_opts['dateafter'] = dateafter
     
     try:
-        with YoutubeDL(info_opts) as ydl:  # type: ignore
-            info = ydl.extract_info(url, download=False)
+        with YoutubeDL(info_opts) as ydl_info:  # type: ignore
+            info = ydl_info.extract_info(url, download=False)
             if info:
                 # Handle both single videos and playlists
                 entries = info.get('entries', [info]) if 'entries' in info else [info]
                 
-                for entry in entries:
-                    if entry and entry.get('id'):
-                        video_id = entry.get('id')
-                        uploader = entry.get('uploader', 'Unknown')
-                        output_dir = os.path.join(base_path, category, uploader)
-                        
-                        # Check if file with same title already exists
-                        existing_file = check_existing_title(entry, output_dir)
-                        if existing_file:
-                            logging.info(f"⚠️  Video already exists: {existing_file}")
-                            logging.info(f"Adding video ID {video_id} to archive to prevent future checks")
-                            # Add to archive to skip in future
-                            with open(archive_log, 'a') as f:
-                                f.write(f"youtube {video_id}\n")
+                # Create a temporary ydl instance with the same outtmpl to check filenames
+                check_opts = {
+                    'outtmpl': f"{base_path}/{category}/%(uploader)s/%(title)s.%(ext)s",
+                    'quiet': True,
+                }
+                with YoutubeDL(check_opts) as ydl_check:  # type: ignore
+                    for entry in entries:
+                        if entry and entry.get('id'):
+                            video_id = entry.get('id')
+                            
+                            # Check if file with exact filename already exists
+                            existing_file = check_existing_video_by_filename(ydl_check, entry)
+                            if existing_file:
+                                logging.info(f"⚠️  Video already exists: {existing_file}")
+                                logging.info(f"Adding video ID {video_id} to archive to prevent future checks")
+                                # Add to archive to skip in future
+                                with open(archive_log, 'a') as f:
+                                    f.write(f"youtube {video_id}\n")
     except Exception as e:
         logging.debug(f"Could not pre-check video info: {e}")
 
     ydl_opts = {
-        'outtmpl': f"{base_path}/{category}/%(uploader)s/{clean_title('%(title)s')}.%(ext)s",
+        'outtmpl': f"{base_path}/{category}/%(uploader)s/%(title)s.%(ext)s",
         'cookiefile': cookies_file,
         'sleep_interval': 3,
         'max_sleep_interval': 69,
@@ -205,6 +212,9 @@ def download_videos(url, category, dateafter=None, retries=3):
                 return False
             elif "Playlists that require authentication" in str(e):
                 logging.warning(f"Skipping video due to authentication requirement: {url}")
+                return False
+            elif "416" in str(e) or "Range Not Satisfiable" in str(e):
+                logging.warning(f"Skipping video with HTTP 416 error (corrupted partial download): {url}")
                 return False
             elif isinstance(e.exc_info[1], urllib3.exceptions.NewConnectionError):
                 logging.error(f"Network error: {e}. Retrying in 1 minute...")
