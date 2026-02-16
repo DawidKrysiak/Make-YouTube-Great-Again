@@ -188,6 +188,10 @@ download_videos() {
             '--download-archive' "$ARCHIVE_FILE"
             '--print' 'after_move:Downloaded: %(filepath)s'
             '--no-warnings'
+            '--write-subs'
+            '--no-write-auto-sub'
+            '--sub-langs' 'en,pl'
+            '--sub-format' 'srt/best'
             '--js-runtimes' 'node,deno'
             '--remote-components' 'ejs:npm'
             '--no-continue'
