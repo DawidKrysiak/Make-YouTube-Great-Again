@@ -1,5 +1,5 @@
 # Make YouTube Great Again
-
+## NOT written in Rust :)
 YouTube (aka.CorpoTube) has become unwatchable recently - it's worse than cable/satellite TVs ever were.
 Let me give you an example from one channel that shall remain nameless:
 A video about some stupidly expensive monitor/tv wall thingy (they don't have to send it back, so yes, they just received MANY thousands of dollars under the table), sponsored by... Intel (so there are at least two mentions of that during the video), then... "word from our sponsor...Ridge Wallet" (didn't Intel sponsor that a second ago???), and then... YouTube pre-roll/mid-rolls. That's the sad state of once great service.

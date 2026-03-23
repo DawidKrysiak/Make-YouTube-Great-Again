@@ -47,13 +47,20 @@ base_path = config['base_path']
 archive_log = "./config/download_archive.txt"
 
 def load_urls(file_path):
-    urls = {}
+    entries = []
     with open(file_path, 'r') as file:
         for line in file:
             line = line.strip()
             if line:  # Check if the line is not empty
                 url, category = line.split('|')
-                urls[url] = category
+                entries.append((url, category))
+
+    random.shuffle(entries)
+
+    urls = {}
+    for url, category in entries:
+        urls[url] = category
+
     return urls
 
 archive = load_urls('./config/archive.txt')
@@ -105,8 +112,8 @@ def create_directories(base_path, data):
         main_dir = os.path.join(base_path, category)
         os.makedirs(main_dir, exist_ok=True)
 
-        # Extract the sub-directory name from the URL
-        sub_dir_name = url.split('@')[1]
+        # Extract the sub-directory name from the URL (strip any /tab suffix)
+        sub_dir_name = url.split('@')[1].split('/')[0]
         sub_dir = os.path.join(main_dir, sub_dir_name)
         os.makedirs(sub_dir, exist_ok=True)
 
@@ -116,7 +123,14 @@ def create_directories(base_path, data):
 create_directories(base_path, archive)
 create_directories(base_path, casual)
 
+def normalize_channel_url(url):
+    """Append /videos to bare channel URLs to avoid multi-tab traversal (Videos+Shorts+Live)."""
+    if re.match(r'https?://www\.youtube\.com/@[^/]+/?$', url):
+        return url.rstrip('/') + '/videos'
+    return url
+
 def download_videos(url, category, dateafter=None, retries=3):
+    url = normalize_channel_url(url)
     delay = randomised_delay()
     logging.info(f"Sleeping for {delay} seconds")
     sleep(delay)  # because YouTube doesn't like it when you download too fast
@@ -127,7 +141,7 @@ def download_videos(url, category, dateafter=None, retries=3):
     info_opts = {
         'quiet': True,
         'no_warnings': True,
-        'extract_flat': 'in_playlist',
+        'extract_flat': True,
         'cookiefile': cookies_file,
     }
     
@@ -225,6 +239,17 @@ def download_videos(url, category, dateafter=None, retries=3):
     logging.error(f"Failed to download video after {retries} attempts: {url}")
     return False
 
+# Permanent error phrases that mean a video will never become available
+_PERMAFAIL_PHRASES = [
+    "Join this channel to get access to members-only content",
+    "This video is available to this channel's members",
+    "This video is private",
+    "Video unavailable",
+    "This video has been removed",
+    "This video is not available",
+    "This video contains content from",  # copyright block
+]
+
 class MyLogger(object):
     def debug(self, msg):
         logging.info(msg)  # Log debug messages as info to see yt-dlp output
@@ -234,6 +259,18 @@ class MyLogger(object):
 
     def error(self, msg):
         logging.error(f"ERROR: {msg}")
+        # If a video will permanently fail, write it to the download archive so it
+        # is never attempted again on future runs (prevents "walking in circles").
+        if any(phrase in msg for phrase in _PERMAFAIL_PHRASES):
+            match = re.search(r'\[youtube(?::[a-z]+)?\] ([A-Za-z0-9_-]{11}): ', msg)
+            if match:
+                video_id = match.group(1)
+                logging.info(f"Archiving {video_id} (permanent failure – will be skipped on future runs)")
+                try:
+                    with open(archive_log, 'a') as f:
+                        f.write(f"youtube {video_id}\n")
+                except Exception as exc:
+                    logging.warning(f"Could not write to download archive: {exc}")
 
 def my_hook(d):
     if d['status'] == 'finished':
@@ -271,7 +308,7 @@ for url, category in casual.items():
     download_videos(url, category, dateafter)
 
     # Delete old files in casual directories
-    sub_dir_name = url.split('@')[1]
+    sub_dir_name = url.split('@')[1].split('/')[0]
     sub_dir = os.path.join(base_path, category, sub_dir_name)
     delete_old_files(sub_dir)
     logging.info(f"Finished processing casual URL: {url}")
