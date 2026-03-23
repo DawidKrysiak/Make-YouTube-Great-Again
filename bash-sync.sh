@@ -42,9 +42,35 @@ load_urls() {
     done < "$file_path"
 }
 
+shuffle_url_pairs() {
+    local urls_var=$1
+    local categories_var=$2
+
+    eval "local count=\${#$urls_var[@]}"
+    if [[ $count -le 1 ]]; then
+        return
+    fi
+
+    for ((i=count-1; i>0; i--)); do
+        j=$((RANDOM % (i + 1)))
+
+        eval "local url_i=\${$urls_var[i]}"
+        eval "local url_j=\${$urls_var[j]}"
+        eval "local category_i=\${$categories_var[i]}"
+        eval "local category_j=\${$categories_var[j]}"
+
+        eval "$urls_var[i]=\"\$url_j\""
+        eval "$urls_var[j]=\"\$url_i\""
+        eval "$categories_var[i]=\"\$category_j\""
+        eval "$categories_var[j]=\"\$category_i\""
+    done
+}
+
 # Load URLs into arrays
 load_urls "./config/archive.txt" ARCHIVE_URLS ARCHIVE_CATEGORIES
 load_urls "./config/casual.txt" CASUAL_URLS CASUAL_CATEGORIES
+shuffle_url_pairs ARCHIVE_URLS ARCHIVE_CATEGORIES
+shuffle_url_pairs CASUAL_URLS CASUAL_CATEGORIES
 
 # Create directories
 create_directories() {
@@ -232,6 +258,14 @@ download_videos() {
             elif echo "$output" | grep -qE "416|Range Not Satisfiable"; then
                 log "Skipping video with HTTP 416 error (corrupted partial download): $url"
                 return 0
+            elif echo "$output" | grep -q "The page needs to be reloaded"; then
+                attempt=$((attempt + 1))
+                if [[ $attempt -lt $retries ]]; then
+                    log "YouTube requested a page reload. Retrying in 10 seconds... ($attempt/$retries)"
+                    sleep 10
+                else
+                    log "YouTube repeatedly requested a page reload for $url"
+                fi
             elif echo "$output" | grep -q "Network is unreachable"; then
                 log "Network error. Retrying in 5 seconds..."
                 sleep 5
@@ -241,8 +275,14 @@ download_videos() {
                 sleep 5
                 attempt=$((attempt + 1))
             else
-                log "Failed to download after $retries attempts: $url"
-                return 1
+                attempt=$((attempt + 1))
+                if [[ $attempt -lt $retries ]]; then
+                    log "Unhandled download error. Retrying in 10 seconds... ($attempt/$retries)"
+                    sleep 10
+                else
+                    log "Failed to download after $retries attempts: $url"
+                    return 1
+                fi
             fi
         else
             log "Successfully downloaded from $url"
