@@ -10,6 +10,42 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
 }
 
+# Parse command line arguments
+PLAYLIST_MODE=false
+MUSIC_ONLY=false
+SINGLE_URL=""
+SINGLE_CATEGORY=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --playlist)
+            PLAYLIST_MODE=true
+            shift
+            ;;
+        --music-only)
+            MUSIC_ONLY=true
+            shift
+            ;;
+        --url)
+            SINGLE_URL="$2"
+            shift 2
+            ;;
+        --category)
+            SINGLE_CATEGORY="$2"
+            shift 2
+            ;;
+        *)
+            log "Unknown argument: $1"
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -n "$SINGLE_URL" && -z "$SINGLE_CATEGORY" ]]; then
+    echo "--category is required when --url is provided"
+    exit 1
+fi
+
 # Load configuration from config.json
 CONFIG_FILE="./config/config.json"
 CONFIG=$(cat "$CONFIG_FILE")
@@ -84,14 +120,16 @@ create_directories() {
         local category=${categories[$i]}
         local main_dir="$base_path/$category"
         mkdir -p "$main_dir"
+        local sub_dir_name
         if [[ "$url" == *@* ]]; then
-            local sub_dir_name=$(echo "$url" | cut -d'@' -f2)
-            local sub_dir="$main_dir/$sub_dir_name"
-            mkdir -p "$sub_dir"
-            echo "Created directory: $sub_dir"
+            sub_dir_name=$(echo "$url" | cut -d'@' -f2 | cut -d'/' -f1)
         else
-            echo "Invalid URL format (missing '@'): $url"
+            sub_dir_name=$(echo "$url" | grep -oE 'list=[A-Za-z0-9_-]+' | cut -d= -f2)
+            [[ -z "$sub_dir_name" ]] && sub_dir_name="playlist"
         fi
+        local sub_dir="$main_dir/$sub_dir_name"
+        mkdir -p "$sub_dir"
+        echo "Created directory: $sub_dir"
     done
 }
 
@@ -157,13 +195,54 @@ check_existing_video() {
     return 1
 }
 
+# Normalize channel URL - append /videos to bare channel URLs to avoid multi-tab traversal
+normalize_channel_url() {
+    local url=$1
+    if [[ "$url" =~ ^https?://www\.youtube\.com/@[^/]+/?$ ]]; then
+        echo "${url%/}/videos"
+    else
+        echo "$url"
+    fi
+}
+
+# Archive permanently-failed video IDs so they are never retried
+archive_permafail_from_output() {
+    local output="$1"
+    while IFS= read -r line; do
+        for phrase in \
+            "Join this channel to get access to members-only content" \
+            "This video is available to this channel's members" \
+            "This video is private" \
+            "Video unavailable" \
+            "This video has been removed" \
+            "This video is not available" \
+            "This video contains content from"; do
+            if [[ "$line" == *"$phrase"* ]]; then
+                local video_id
+                video_id=$(echo "$line" | grep -oE '\[youtube(:[a-z]+)?\] [A-Za-z0-9_-]{11}' | grep -oE '[A-Za-z0-9_-]{11}$')
+                if [[ -n "$video_id" ]]; then
+                    log "Archiving $video_id (permanent failure - will be skipped on future runs)"
+                    echo "youtube $video_id" >> "$ARCHIVE_FILE"
+                fi
+                break
+            fi
+        done
+    done <<< "$output"
+}
+
 # Download videos
 download_videos() {
     local url=$1
     local category=$2
     local dateafter=$3
+    local playlist_mode=${4:-false}
+    local music_only=${5:-false}
     local retries=3
     local attempt=0
+
+    if [[ "$playlist_mode" == "false" ]]; then
+        url=$(normalize_channel_url "$url")
+    fi
 
     # First, extract video info to check if it already exists (failover for lost archive)
     local info_command=(
@@ -209,31 +288,45 @@ download_videos() {
             '--sleep-interval' '3'
             '--max-sleep-interval' '69'
             '--sleep-subtitles' '1'
-            '--format' 'best[ext=mp4]'
-            '--no-playlist'
             '--download-archive' "$ARCHIVE_FILE"
             '--print' 'after_move:Downloaded: %(filepath)s'
             '--no-warnings'
-            '--write-subs'
-            '--no-write-auto-sub'
-            '--sub-langs' 'en,pl'
-            '--sub-format' 'srt/best'
             '--js-runtimes' 'node,deno'
             '--remote-components' 'ejs:npm'
             '--no-continue'
             '--no-part'
             '--extractor-args' 'youtubetab:skip=authcheck'
-            "$url"
         )
+        if [[ "$playlist_mode" == "false" ]]; then
+            command+=('--no-playlist')
+        fi
+        if [[ "$music_only" == "true" ]]; then
+            command+=(
+                '--format' 'bestaudio/best'
+                '--extract-audio'
+                '--audio-format' 'mp3'
+                '--audio-quality' '0'
+            )
+        else
+            command+=(
+                '--format' 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]'
+                '--write-subs'
+                '--no-write-auto-sub'
+                '--sub-langs' 'en,pl'
+                '--sub-format' 'srt/best'
+            )
+        fi
         if [[ -n "$dateafter" ]]; then
             command+=('--dateafter' "$dateafter")
         fi
+        command+=("$url")
 
         log "Starting download of $url"
         local output
         output=$("${command[@]}" 2>&1)
         local result=$?
         echo "$output" | tee -a "$LOG_FILE"
+        archive_permafail_from_output "$output"
 
         if [[ $result -ne 0 ]]; then
             log "Download failed for $url"
@@ -293,40 +386,51 @@ download_videos() {
     return 1
 }
 
-# Process archive URLs
-log "Processing ${#ARCHIVE_URLS[@]} archive URLs"
-for i in "${!ARCHIVE_URLS[@]}"; do
-    url=${ARCHIVE_URLS[$i]}
-    category=${ARCHIVE_CATEGORIES[$i]}
-    log "Processing archive URL: $url with category: $category"
-    if [[ "$INITIAL_SEEDING" == "false" ]]; then
-        dateafter=$(date -d "yesterday" +%Y%m%d)
-        download_videos "$url" "$category" "$dateafter"
-    else
-        download_videos "$url" "$category"
-    fi
-    log "Finished processing archive URL: $url"
-done
+# Clean up old files before downloading new ones
+if [[ -n "$SINGLE_URL" ]]; then
+    # One-off download — skip config file loops entirely
+    log "One-off download: $SINGLE_URL -> $SINGLE_CATEGORY"
+    download_videos "$SINGLE_URL" "$SINGLE_CATEGORY" "" "$PLAYLIST_MODE" "$MUSIC_ONLY"
+else
+    log "=== Cleaning up old files ==="
+    for i in "${!CASUAL_URLS[@]}"; do
+        url=${CASUAL_URLS[$i]}
+        category=${CASUAL_CATEGORIES[$i]}
+        sub_dir_name=$(echo "$url" | cut -d'@' -f2 | cut -d'/' -f1)
+        sub_dir="$BASE_PATH/$category/$sub_dir_name"
+        delete_old_files "$sub_dir"
+    done
 
-# Process casual URLs
-log "Processing ${#CASUAL_URLS[@]} casual URLs"
-for i in "${!CASUAL_URLS[@]}"; do
-    url=${CASUAL_URLS[$i]}
-    category=${CASUAL_CATEGORIES[$i]}
-    log "Processing casual URL: $url with category: $category"
-    if [[ "$INITIAL_SEEDING" == "true" ]]; then
-        dateafter=$(date -d "30 days ago" +%Y%m%d)
-        download_videos "$url" "$category" "$dateafter"
-    else
-        dateafter=$(date -d "yesterday" +%Y%m%d)
-        download_videos "$url" "$category" "$dateafter"
-    fi
+    # Process archive URLs
+    log "Processing ${#ARCHIVE_URLS[@]} archive URLs"
+    for i in "${!ARCHIVE_URLS[@]}"; do
+        url=${ARCHIVE_URLS[$i]}
+        category=${ARCHIVE_CATEGORIES[$i]}
+        log "Processing archive URL: $url with category: $category"
+        if [[ "$INITIAL_SEEDING" == "false" ]]; then
+            dateafter=$(date -d "yesterday" +%Y%m%d)
+            download_videos "$url" "$category" "$dateafter" "$PLAYLIST_MODE" "$MUSIC_ONLY"
+        else
+            download_videos "$url" "$category" "" "$PLAYLIST_MODE" "$MUSIC_ONLY"
+        fi
+        log "Finished processing archive URL: $url"
+    done
 
-    # Delete old files in casual directories
-    sub_dir_name=$(echo "$url" | cut -d'@' -f2)
-    sub_dir="$BASE_PATH/$category/$sub_dir_name"
-    delete_old_files "$sub_dir"
-    log "Finished processing casual URL: $url"
-done
+    # Process casual URLs
+    log "Processing ${#CASUAL_URLS[@]} casual URLs"
+    for i in "${!CASUAL_URLS[@]}"; do
+        url=${CASUAL_URLS[$i]}
+        category=${CASUAL_CATEGORIES[$i]}
+        log "Processing casual URL: $url with category: $category"
+        if [[ "$INITIAL_SEEDING" == "true" ]]; then
+            dateafter=$(date -d "30 days ago" +%Y%m%d)
+            download_videos "$url" "$category" "$dateafter" "$PLAYLIST_MODE" "$MUSIC_ONLY"
+        else
+            dateafter=$(date -d "yesterday" +%Y%m%d)
+            download_videos "$url" "$category" "$dateafter" "$PLAYLIST_MODE" "$MUSIC_ONLY"
+        fi
+        log "Finished processing casual URL: $url"
+    done
+fi
 
 log "=== YouTube Sync Completed ==="

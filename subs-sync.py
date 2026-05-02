@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from time import sleep
 import random
 import re
+import argparse
 import logging
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
@@ -35,6 +36,17 @@ logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 
 logging.info("=== Starting YouTube Sync ===")
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='YouTube channel/playlist sync script')
+parser.add_argument('--playlist', action='store_true', help='Treat URLs as playlist URLs (allows full playlist download)')
+parser.add_argument('--music-only', action='store_true', dest='music_only', help='Download audio only as MP3 in highest quality')
+parser.add_argument('--url', help='Download a single URL directly (skips config file loops)')
+parser.add_argument('--category', help='Category/folder name for --url (required when --url is used)')
+args = parser.parse_args()
+
+if args.url and not args.category:
+    parser.error('--category is required when --url is provided')
 
 # Load configuration from config.json
 with open('./config/config.json', 'r') as config_file:
@@ -112,8 +124,12 @@ def create_directories(base_path, data):
         main_dir = os.path.join(base_path, category)
         os.makedirs(main_dir, exist_ok=True)
 
-        # Extract the sub-directory name from the URL (strip any /tab suffix)
-        sub_dir_name = url.split('@')[1].split('/')[0]
+        # Extract the sub-directory name from the URL
+        if '@' in url:
+            sub_dir_name = url.split('@')[1].split('/')[0]
+        else:
+            match = re.search(r'list=([A-Za-z0-9_-]+)', url)
+            sub_dir_name = match.group(1) if match else 'playlist'
         sub_dir = os.path.join(main_dir, sub_dir_name)
         os.makedirs(sub_dir, exist_ok=True)
 
@@ -129,8 +145,9 @@ def normalize_channel_url(url):
         return url.rstrip('/') + '/videos'
     return url
 
-def download_videos(url, category, dateafter=None, retries=3):
-    url = normalize_channel_url(url)
+def download_videos(url, category, dateafter=None, retries=3, music_only=False, playlist_mode=False):
+    if not playlist_mode:
+        url = normalize_channel_url(url)
     delay = randomised_delay()
     logging.info(f"Sleeping for {delay} seconds")
     sleep(delay)  # because YouTube doesn't like it when you download too fast
@@ -179,12 +196,16 @@ def download_videos(url, category, dateafter=None, retries=3):
         'max_sleep_interval': 69,
         'sleep_subtitles': 1,
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
-        'noplaylist': True,
+        'noplaylist': not playlist_mode,
         'download_archive': archive_log,
         'quiet': False,
         'no_warnings': True,
         'nopart': True,
         'nocontinue': True,
+        'writesubtitles': True,
+        'writeautomaticsub': False,
+        'subtitleslangs': ['en', 'pl'],
+        'subtitlesformat': 'srt/best',
         'logger': MyLogger(),
         'progress_hooks': [my_hook],
         'extractor_args': {'youtubetab': {'skip': 'authcheck'}},
@@ -194,6 +215,18 @@ def download_videos(url, category, dateafter=None, retries=3):
 
     if dateafter:
         ydl_opts['dateafter'] = dateafter
+
+    if music_only:
+        ydl_opts['format'] = 'bestaudio/best'
+        ydl_opts['postprocessors'] = [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '0',
+        }]
+        ydl_opts.pop('writesubtitles', None)
+        ydl_opts.pop('writeautomaticsub', None)
+        ydl_opts.pop('subtitleslangs', None)
+        ydl_opts.pop('subtitlesformat', None)
 
     attempt = 0
     while attempt < retries:
@@ -286,31 +319,38 @@ def my_hook(d):
             eta = d.get('_eta_str', 'N/A')
             logging.info(f"Downloading: {percent} at {speed} ETA: {eta}")
 
-logging.info(f"Processing {len(archive)} archive URLs")
-for url, category in archive.items():
-    logging.info(f"Processing archive URL: {url} with category: {category}")
-    dateafter = None
-    if not initial_seeding:
-        dateafter = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+if args.url:
+    # One-off download — skip config file loops entirely
+    logging.info(f"One-off download: {args.url} -> {args.category}")
+    download_videos(args.url, args.category, music_only=args.music_only, playlist_mode=args.playlist)
+else:
+    # Clean up old files before downloading new ones
+    logging.info("=== Cleaning up old files ===")
+    for url, category in casual.items():
+        sub_dir_name = url.split('@')[1].split('/')[0] if '@' in url else 'playlist'
+        sub_dir = os.path.join(base_path, category, sub_dir_name)
+        delete_old_files(sub_dir)
 
-    download_videos(url, category, dateafter)
-    logging.info(f"Finished processing archive URL: {url}")
+    logging.info(f"Processing {len(archive)} archive URLs")
+    for url, category in archive.items():
+        logging.info(f"Processing archive URL: {url} with category: {category}")
+        dateafter = None
+        if not initial_seeding:
+            dateafter = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
 
-logging.info(f"Processing {len(casual)} casual URLs")
-for url, category in casual.items():
-    logging.info(f"Processing casual URL: {url} with category: {category}")
-    dateafter = None
-    if initial_seeding:
-        dateafter = (datetime.now() - timedelta(days=30)).strftime('%Y%m%d')
-    else:
-        dateafter = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+        download_videos(url, category, dateafter, music_only=args.music_only, playlist_mode=args.playlist)
+        logging.info(f"Finished processing archive URL: {url}")
 
-    download_videos(url, category, dateafter)
+    logging.info(f"Processing {len(casual)} casual URLs")
+    for url, category in casual.items():
+        logging.info(f"Processing casual URL: {url} with category: {category}")
+        dateafter = None
+        if initial_seeding:
+            dateafter = (datetime.now() - timedelta(days=30)).strftime('%Y%m%d')
+        else:
+            dateafter = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
 
-    # Delete old files in casual directories
-    sub_dir_name = url.split('@')[1].split('/')[0]
-    sub_dir = os.path.join(base_path, category, sub_dir_name)
-    delete_old_files(sub_dir)
-    logging.info(f"Finished processing casual URL: {url}")
+        download_videos(url, category, dateafter, music_only=args.music_only, playlist_mode=args.playlist)
+        logging.info(f"Finished processing casual URL: {url}")
 
 logging.info("=== YouTube Sync Completed ===")
