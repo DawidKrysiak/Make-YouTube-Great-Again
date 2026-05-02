@@ -69,6 +69,17 @@ What I see is possible applications:
     * Bash script used if you have a dedicated Linux/MacOS/WSL system you can simply trigger via crontab
     * Python script is more universal, can be deployed in a Docker container, on Windows natively etc.
 
+* Music downloads! 
+I found myself in need to download some music from YouTube and I don't want to have a separate script for that, so I added a functionality to download music as well.
+Process:
+1. add videos to a playlist
+2. run the script with the new switch to download the highest quality audio and convert it to mp3 (you need to have ffmpeg installed for that as well). For example:
+
+```
+./bash-sync.sh --music-only --playlist --url 'https://www.youtube.com/playlist?list={hash of your playlist}' --category music
+```
+
+
 # JavaScript Runtime Setup
 
 As of recent updates, yt-dlp requires a JavaScript runtime to solve YouTube's challenge scripts. Without this, downloads may fail with "challenge solving failed" errors.
