@@ -4,11 +4,8 @@ https://www.youtube.com/@BaumgartnerRestoration|ASMR
 https://www.youtube.com/@davidnihill1|comedy
 https://www.youtube.com/@Clickspring|craft
 https://www.youtube.com/@DIYPerks|craft
-https://www.youtube.com/@MarkRober|craft
-https://www.youtube.com/@MaydayAirDisaster|documentaries
 https://www.youtube.com/@Balleka|gliders
 https://www.youtube.com/@ChronicleMedieval|history
-https://www.youtube.com/@FallofCivilizations|history
 https://www.youtube.com/@HistoryBuffs|history
 https://www.youtube.com/@HistoryoftheEarth|history
 https://www.youtube.com/@MarkFeltonProductions|history
@@ -31,6 +28,5 @@ https://www.youtube.com/@Acousticians|Music
 https://www.youtube.com/@coreyheuvel|Music
 https://www.youtube.com/@AppliedScience|science
 https://www.youtube.com/@PhysicsExplainedVideos|science
-https://www.youtube.com/@SleepOnScience|science
 https://www.youtube.com/@smartereveryday|science
-https://www.youtube.com/@storiesthatinspire662|journalism
+https://www.youtube.com/@storiesthatinspire662|movies

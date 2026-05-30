@@ -55,7 +55,7 @@ with open('./config/config.json', 'r') as config_file:
 initial_seeding = config['initial_seeding']
 retention_period = config['retention_period']
 cookies_file = config['cookies_file']
-base_path = config['base_path']
+base_path: str = config['base_path']
 archive_log = "./config/download_archive.txt"
 
 def load_urls(file_path):
@@ -145,7 +145,7 @@ def normalize_channel_url(url):
         return url.rstrip('/') + '/videos'
     return url
 
-def download_videos(url, category, dateafter=None, retries=3, music_only=False, playlist_mode=False):
+def download_videos(url, category: str, dateafter=None, retries=3, music_only=False, playlist_mode=False):
     if not playlist_mode:
         url = normalize_channel_url(url)
     delay = randomised_delay()
@@ -175,7 +175,7 @@ def download_videos(url, category, dateafter=None, retries=3, music_only=False, 
                 for entry in entries:
                     if entry and entry.get('id'):
                         video_id = entry.get('id')
-                        uploader = entry.get('uploader', 'Unknown')
+                        uploader = str(entry.get('uploader', 'Unknown'))
                         output_dir = os.path.join(base_path, category, uploader)
                         
                         # Check if file with same title already exists

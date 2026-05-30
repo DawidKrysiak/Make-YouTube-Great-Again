@@ -72,7 +72,7 @@ What I see is possible applications:
 * Music downloads! 
 I found myself in need to download some music from YouTube and I don't want to have a separate script for that, so I added a functionality to download music as well.
 Process:
-1. add videos to a playlist
+1. add videos to a playlist (or use some other channel's playlist if it suits your needs).)
 2. run the script with the new switch to download the highest quality audio and convert it to mp3 (you need to have ffmpeg installed for that as well). For example:
 
 ```
