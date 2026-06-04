@@ -39,11 +39,19 @@ logging.info("=== Starting YouTube Sync ===")
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='YouTube channel/playlist sync script')
-parser.add_argument('--playlist', action='store_true', help='Treat URLs as playlist URLs (allows full playlist download)')
+parser.add_argument('--playlist', nargs='?', const=True, default=False, metavar='URL',
+                    help='Enable playlist mode. Optionally pass a URL directly: --playlist URL (shorthand for --url URL --playlist)')
 parser.add_argument('--music-only', action='store_true', dest='music_only', help='Download audio only as MP3 in highest quality')
 parser.add_argument('--url', help='Download a single URL directly (skips config file loops)')
 parser.add_argument('--category', help='Category/folder name for --url (required when --url is used)')
 args = parser.parse_args()
+
+# Allow --playlist URL as shorthand for --url URL --playlist
+if isinstance(args.playlist, str):
+    if args.url and args.url != args.playlist:
+        parser.error('Conflicting URLs: both --url and --playlist URL were specified')
+    args.url = args.playlist
+    args.playlist = True
 
 if args.url and not args.category:
     parser.error('--category is required when --url is provided')

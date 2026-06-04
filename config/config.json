@@ -2,5 +2,5 @@
     "initial_seeding": false,
     "retention_period": 180,
     "cookies_file": "./config/cookies.txt",
-    "base_path" : "/mnt/vault/movies/YouTube"
+    "base_path" : "."
 }
